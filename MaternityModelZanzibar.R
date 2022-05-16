@@ -5,6 +5,7 @@
 # AND IN SUB-SAHARAN AFRICA IN GENERAL USING WHO DATA
 # EDITS BY CAROLIN VEGVARI 19/10/2020
 # EDITS BY CAROLIN VEGVARI 16/05/2022
+# github: https://github.com/kl3mn9/maternity-model
 ###################################################################
 
 

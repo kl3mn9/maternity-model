@@ -76,8 +76,6 @@ durPPCZ <- rgamma(n=births,shape=shapePPCZ,scale=scalePPCZ)		#duration postpartu
 ###START OF SIMULATION###################
 #########################################
 
-woman <- seq(1,births,by=1)
-
 #Random date and time function taken from stackoverflow
 #http://stackoverflow.com/questions/14720983/efficiently-generate-a-random-sample-of-times-and-dates-between-two-dates
 

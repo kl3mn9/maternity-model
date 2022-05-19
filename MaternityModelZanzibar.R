@@ -4,7 +4,7 @@
 # IN ZANZIBAR (USING ZANZIBAR-SPECIFIC MATERNITY WARD DATA) 
 # AND IN SUB-SAHARAN AFRICA IN GENERAL USING WHO DATA
 # EDITS BY CAROLIN VEGVARI 19/10/2020
-# EDITS BY CAROLIN VEGVARI 16/05/2022
+# EDITS AND REFACTORING BY CAROLIN VEGVARI 16/05/2022
 # github: https://github.com/kl3mn9/maternity-model
 ###################################################################
 
@@ -15,7 +15,7 @@ closeAllConnections()
 library(lubridate)	# for handling times and dates
 
 # set working directory
-setwd("/home/carolin/OGH/maternity-model/")
+setwd("C:\\Users\\Carolin\\Documents\\Write-up\\BeckyZanzibarMaternity\\")
 
 set.seed(42)		#for reproducibility
 
@@ -54,7 +54,7 @@ scaleDelU <- 1.23 		#scale parameter, uncomplicated
 
 ###Read in Zanzibar data###
 # contains data on births in 37 facilities in Zanzibar
-data<-read.table("ZanzibarFacilityDataset.csv", header=T,sep=",", fill=TRUE)
+data<-read.table("Zanzibar facility dataset.csv", header=T,sep=",", fill=TRUE)
 numFacilities <- nrow(data)
 
 test<-data[!(data$no_delivs==0),] #deleting facilities #30 and #32 because there are zero deliveries in the dataset
@@ -109,6 +109,9 @@ temp5 <- rep(0,length(data$no_delivs))
 temp5[1] <- 1
 complicatedZ <- rep(0,births)			# complicated births for Zanzibar - determined by how many c sections performed in each facility
 
+# below we assume that complicated births only occur in facilities that perform c-sections in dataset
+# if x out of n births in a month at a facility are c-sections 12*x complicated births are assigned to the facility over a year
+# (and 12*n births in total)
 for(i in 2:nrow(data)) 
 {
 	temp5[i] <- temp5[i-1] + 12 * data$no_delivs[i-1]
@@ -200,20 +203,13 @@ getOccupancy <- function(a.start, a.finish, a.intervals, facility.number)
 }
 
 # function to determine occupancy of different wards/rooms depending on starTime, finish entered
-getOccupancyByCentreSnapshot <- function(start, finish, timeZone, numFacilities)
+getOccupancyByCentreSnapshot <- function(start, finish, breaks, timeZone, numFacilities)
 { 
-	# times to generate 'snapshots', 
-	# i.e. times at which to establish delivery room and maternity ward occupancy
-	breaks <- seq(as.POSIXct('2014-01-01 00:00', tz = timeZone), by = '1 hours', length = 365*24+1)
-	temp <- format(breaks,"%H:%M:%S")
-	# 3 snapshots per day over a year
-	breaks3 <- breaks[temp=="04:00:00" | temp=="12:00:00" |temp=="20:00:00"]
+	a.start <- event.array(start, breaks)		 
+	a.finish <- event.array(finish, breaks)
+	a.intervals <- intervals.array(start, breaks)
 
-	a.start <- event.array(start, breaks3)		 
-	a.finish <- event.array(finish, breaks3)
-	a.intervals <- intervals.array(start, breaks3)
-
-	freq <- breaks3
+	freq <- breaks
 	facility.numbers <- seq(1, numFacilities)
 	# omit facilities 30 and 32 because zero deliveries were recorded
 	# this is specific to Zanzibar
@@ -226,7 +222,7 @@ getOccupancyByCentreSnapshot <- function(start, finish, timeZone, numFacilities)
 
 	freq <- as.data.frame(freq)
 	names(freq) <- c("Snapshot", paste0("count", facility.numbers))
-	freq$Snapshot <- breaks3
+	freq$Snapshot <- breaks
 
 	return(freq)
 }
@@ -235,18 +231,25 @@ getOccupancyByCentreSnapshot <- function(start, finish, timeZone, numFacilities)
 # OCCUPANCY AT SNAPSHOTS IN TIME
 #################################################################################################################################
 
+# times to generate 'snapshots', 
+# i.e. times at which to establish delivery room and maternity ward occupancy
+breaks <- seq(as.POSIXct('2014-01-01 00:00', tz = timeZone), by = '1 hours', length = 365*24+1)
+temp <- format(breaks,"%H:%M:%S")
+# 3 snapshots per day over a year
+breaks3 <- breaks[temp=="04:00:00" | temp=="12:00:00" |temp=="20:00:00"]
+
 # ZANZIBAR ANALYSIS #############################################################################################################
 
 dischargeTime <- getDischargeTime(discharge1Z)
 
 # Occupancy maternity centre (including time spent in delivery room and time in post-partum room
-freqZ <- getOccupancyByCentreSnapshot(labour_start, dischargeTime, timeZone, numFacilities)
+freqZ <- getOccupancyByCentreSnapshot(labour_start, dischargeTime, breaks3, timeZone, numFacilities)
 
 # Occupancy delivery room 
-freqLabourZ <- getOccupancyByCentreSnapshot(labour_start, labour_end, timeZone, numFacilities)
+freqLabourZ <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks3, timeZone, numFacilities)
 
 # Occupancy post-partum room
-freqMatZ <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, timeZone, numFacilities)
+freqMatZ <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks3, timeZone, numFacilities)
 
 
 # WHO SSA ANALYSIS #############################################################################################################
@@ -254,20 +257,35 @@ freqMatZ <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, timeZone, nu
 dischargeTime <- getDischargeTime(discharge1WHO)
 
 # Occupancy maternity centre (including time spent in delivery room and time in post-partum room
-freqWHO <- getOccupancyByCentreSnapshot(labour_start, dischargeTime, timeZone, numFacilities)
+freqWHO <- getOccupancyByCentreSnapshot(labour_start, dischargeTime, breaks3, timeZone, numFacilities)
 
 # Occupancy delivery room - same as Zanzibar because labour start and end times same
-freqLabourWHO <- getOccupancyByCentreSnapshot(labour_start, labour_end, timeZone, numFacilities)
+freqLabourWHO <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks3, timeZone, numFacilities)
 
 # Occupancy post-partum room
-freqMatWHO <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, timeZone, numFacilities)
+freqMatWHO <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks3, timeZone, numFacilities)
 
 
 #################################################################################################################################
-# PROPORTION OF TIME EACH FACILITY IS AT OR OVER CAPACITY --> EVALUATE CAPACITY EVERY HOUR RATHER THAN EVERY 8 HOURS
+# PROPORTION OF TIME EACH FACILITY IS OVER CAPACITY OR EMPTY --> EVALUATE CAPACITY EVERY HOUR RATHER THAN EVERY 8 HOURS
 #################################################################################################################################
 
+breaks <- seq(as.POSIXct('2014-01-01 00:00', tz = "GMT"),by = '1 hours', length = 365*24+1)
+
+freqLabourZHour <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks, timeZone, numFacilities)
+
+# How can there be centres with labour ward capacity 0? Do women get transferred there from other centres after labour?
+capacityLW <- data$beds_deliv[-c(30, 32)]		
+capacityMW <- data$beds_matern[-c(30, 32)]
+capacity <- capacityLW + capacityMW
+
+# which of the above is the right capacity to evaluate? i.e. do births also happen in maternity wards 
+# in centres where there are zero delivery beds?
+hoursOverCapacity <- colSums(sweep(freqLabourZHour[, 2:ncol(freqLabourZHour)], 2, capacityLW, ">"))
+percentTimeOverCapacity <- hoursOverCapacity / nrow(freqLabourZHour) * 100
 
 
+hoursEmpty <- colSums(freqLabourZHour[, 2:ncol(freqLabourZHour)]==0)
+percentTimeEmpty <- hoursEmpty / nrow(freqLabourZHour) * 100
 
 

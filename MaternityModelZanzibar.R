@@ -197,26 +197,22 @@ intervals.array <- function(x, intervals)
 }
 
 # function to determine occupancy in each facility for each snapshot
-getOccupancy <- function(a.start, a.finish, a.intervals, facility.number)
+getOccupancy <- function(a.start, a.finish, a.intervals, facility, facility.number)
 {
 	count <- colSums(a.start[facility==facility.number,] <= a.intervals[facility==facility.number,] & a.finish[facility==facility.number,] >= a.intervals[facility==facility.number,])
 }
 
 # function to determine occupancy of different wards/rooms depending on starTime, finish entered
-getOccupancyByCentreSnapshot <- function(start, finish, breaks, timeZone, numFacilities)
+getOccupancyByCentreSnapshot <- function(start, finish, breaks, timeZone, facility, facility.numbers)
 { 
 	a.start <- event.array(start, breaks)		 
 	a.finish <- event.array(finish, breaks)
 	a.intervals <- intervals.array(start, breaks)
 
 	freq <- breaks
-	facility.numbers <- seq(1, numFacilities)
-	# omit facilities 30 and 32 because zero deliveries were recorded
-	# this is specific to Zanzibar
-	facility.numbers <- facility.numbers[-c(30, 32)]
 	for(facility.number in facility.numbers)
 	{
-		count <- getOccupancy(a.start, a.finish, a.intervals, facility.number)
+		count <- getOccupancy(a.start, a.finish, a.intervals, facility, facility.number)
 		freq <- cbind(freq, count)	
 	} 
 
@@ -228,42 +224,54 @@ getOccupancyByCentreSnapshot <- function(start, finish, breaks, timeZone, numFac
 }
 
 #################################################################################################################################
-# OCCUPANCY AT SNAPSHOTS IN TIME
+# OCCUPANCY AT SNAPSHOTS IN TIME (4:00, 12:00, 20:00)
 #################################################################################################################################
 
 # times to generate 'snapshots', 
 # i.e. times at which to establish delivery room and maternity ward occupancy
+# 3 snapshots per day over a year
 breaks <- seq(as.POSIXct('2014-01-01 00:00', tz = timeZone), by = '1 hours', length = 365*24+1)
 temp <- format(breaks,"%H:%M:%S")
-# 3 snapshots per day over a year
 breaks3 <- breaks[temp=="04:00:00" | temp=="12:00:00" |temp=="20:00:00"]
 
-# ZANZIBAR ANALYSIS #############################################################################################################
+
+# all births 
 
 dischargeTime <- getDischargeTime(discharge1Z)
 
+facility.numbers <- seq(1, numFacilities)
+# omit facilities 30 and 32 because zero deliveries were recorded
+# this is specific to Zanzibar
+facility.numbers <- facility.numbers[-c(30, 32)]
+
 # Occupancy maternity centre (including time spent in delivery room and time in post-partum room
-freqZ <- getOccupancyByCentreSnapshot(labour_start, dischargeTime, breaks3, timeZone, numFacilities)
+freqZ <- getOccupancyByCentreSnapshot(labour_start, dischargeTime, breaks3, timeZone, facility, facility.numbers)
 
 # Occupancy delivery room 
-freqLabourZ <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks3, timeZone, numFacilities)
+freqLabourZ <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks3, timeZone, facility, facility.numbers)
 
 # Occupancy post-partum room
-freqMatZ <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks3, timeZone, numFacilities)
+freqMatZ <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks3, timeZone, facility, facility.numbers)
 
 
-# WHO SSA ANALYSIS #############################################################################################################
+# complicated births only
+labour_start_comp <- labour_start[complicatedZ==1]
+labour_end_comp <- labour_end[complicatedZ==1]
+dischargeTime_comp <- dischargeTime[complicatedZ==1]
 
-dischargeTime <- getDischargeTime(discharge1WHO)
+facility.numbers <- seq(1, numFacilities)
+# only consider facilities carrying out c-sections
+facility.numbers.c <- facility.numbers[data$csects > 0]
+facility.c <- facility[complicatedZ==1]
 
 # Occupancy maternity centre (including time spent in delivery room and time in post-partum room
-freqWHO <- getOccupancyByCentreSnapshot(labour_start, dischargeTime, breaks3, timeZone, numFacilities)
+freqZ_comp <- getOccupancyByCentreSnapshot(labour_start_comp, dischargeTime_comp, breaks3, timeZone, facility.c, facility.numbers.c)
 
-# Occupancy delivery room - same as Zanzibar because labour start and end times same
-freqLabourWHO <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks3, timeZone, numFacilities)
+# Occupancy delivery room 
+freqLabourZ_comp <- getOccupancyByCentreSnapshot(labour_start_comp, labour_end_comp, breaks3, timeZone, facility.c, facility.numbers.c)
 
 # Occupancy post-partum room
-freqMatWHO <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks3, timeZone, numFacilities)
+freqMatZ_comp <- getOccupancyByCentreSnapshot(labour_end_comp, dischargeTime_comp, breaks3, timeZone, facility.c, facility.numbers.c)
 
 
 #################################################################################################################################
@@ -272,7 +280,7 @@ freqMatWHO <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks3, t
 
 breaks <- seq(as.POSIXct('2014-01-01 00:00', tz = "GMT"),by = '1 hours', length = 365*24+1)
 
-freqLabourZHour <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks, timeZone, numFacilities)
+freqLabourZHour <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks, timeZone, facility, facility.numbers)
 
 # How can there be centres with labour ward capacity 0? Do women get transferred there from other centres after labour?
 capacityLW <- data$beds_deliv[-c(30, 32)]		

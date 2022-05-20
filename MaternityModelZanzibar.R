@@ -13,6 +13,8 @@ rm(list=ls())
 closeAllConnections()
 
 library(lubridate)	# for handling times and dates
+library(ggplot2)		# for plotting
+library(tidyr)		# for data formating
 
 # set working directory
 setwd("C:\\Users\\Carolin\\Documents\\Write-up\\BeckyZanzibarMaternity\\")
@@ -57,7 +59,7 @@ scaleDelU <- 1.23 		#scale parameter, uncomplicated
 data<-read.table("Zanzibar facility dataset.csv", header=T,sep=",", fill=TRUE)
 numFacilities <- nrow(data)
 
-test<-data[!(data$no_delivs==0),] #deleting facilities #30 and #32 because there are zero deliveries in the dataset
+df.fac.snaps<-data[!(data$no_delivs==0),] #deleting facilities #30 and #32 because there are zero deliveries in the dataset
 
 sum(data$no_delivs)
 births <- 12*sum(data$no_delivs)	#estimated no. births per year in facilities in Zanzibar
@@ -272,6 +274,125 @@ freqLabourZ_comp <- getOccupancyByCentreSnapshot(labour_start_comp, labour_end_c
 
 # Occupancy post-partum room
 freqMatZ_comp <- getOccupancyByCentreSnapshot(labour_end_comp, dischargeTime_comp, breaks3, timeZone, facility.c, facility.numbers.c)
+
+
+# WOMEN IN FACILITIES
+# Plot total number of births and complicated births over a representative month (snapshots, facility occupancy)
+df.total.snaps <- data.frame(Snapshot=breaks3, TotalBirths=rowSums(freqZ[, 2:ncol(freqZ)]), CompBirths=rowSums(freqZ_comp[,2:ncol(freqZ_comp)]))
+df.total.snaps$UncompBirths <- df.total.snaps$TotalBirths - df.total.snaps$CompBirths
+
+# 178:270 are rownumbers of snapshots in March
+df.total.snaps.long <- gather(df.total.snaps[178:270, -2], BirthType, NumBirths, CompBirths, UncompBirths, factor_key=TRUE)
+
+p1 <- ggplot(df.total.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
+	scale_fill_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
+	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + 
+	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
+print(p1)
+ggsave("TotalBirthsMonthSingle.png", plot=p1, dpi=300, width=12, height=8)
+
+
+# Plot number of births and complicated births over a representative month by facility (snapshots, facility occupancy)
+freqZ.long <- gather(freqZ[178:270,], Facility, NumBirths, count1:count37)
+freqZ_comp.long <- gather(freqZ_comp[178:270,], Facility, CompBirths, count5:count36)
+df.fac.snaps <- merge(freqZ.long, freqZ_comp.long, by=c("Snapshot", "Facility"), all=TRUE)
+df.fac.snaps <- df.fac.snaps[order(df.fac.snaps$Facility, df.fac.snaps$Snapshot), ]
+df.fac.snaps$CompBirths[is.na(df.fac.snaps$CompBirths)] <- 0
+df.fac.snaps$UncompBirths <- df.fac.snaps$NumBirths - df.fac.snaps$CompBirths
+df.fac.snaps.long <- gather(df.fac.snaps[, -3], BirthType, NumBirths, CompBirths, UncompBirths, factor_key=TRUE)
+
+fac.levels <- paste0("count", 1:37)
+fac.levels <- fac.levels[-c(30, 32)]
+df.fac.snaps.long$Facility <- factor(df.fac.snaps.long$Facility, levels=fac.levels) 
+df.fac.snaps.long <- df.fac.snaps.long[order(df.fac.snaps.long$Facility, df.fac.snaps.long$Snapshot), ]
+levels(df.fac.snaps.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p2 <- ggplot(df.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
+	scale_fill_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
+	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + facet_wrap(~ Facility, ncol=5) +
+	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
+#print(p2)
+ggsave("BirthsFacilityMonthSingle.png", plot=p2, dpi=300, width=18, height=18)
+
+
+# WOMEN IN DELIVERY ROOMS
+# Plot total number of births and complicated births over a representative month (snapshots, facility occupancy)
+df.del.snaps <- data.frame(Snapshot=breaks3, TotalBirths=rowSums(freqLabourZ[, 2:ncol(freqLabourZ)]), CompBirths=rowSums(freqLabourZ_comp[,2:ncol(freqLabourZ_comp)]))
+df.del.snaps$UncompBirths <- df.del.snaps$TotalBirths - df.del.snaps$CompBirths
+
+# 178:270 are rownumbers of snapshots in March
+df.del.snaps.long <- gather(df.del.snaps[178:270, -2], BirthType, NumBirths, CompBirths, UncompBirths, factor_key=TRUE)
+
+p3 <- ggplot(df.del.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
+	scale_fill_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
+	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in delivery rooms") + 
+	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
+print(p3)
+ggsave("TotalDelMonthSingle.png", plot=p3, dpi=300, width=12, height=8)
+
+
+# Plot number of births and complicated births over a representative month by facility (snapshots, facility occupancy)
+freqLabourZ.long <- gather(freqLabourZ[178:270,], Facility, NumBirths, count1:count37)
+freqLabourZ_comp.long <- gather(freqLabourZ_comp[178:270,], Facility, CompBirths, count5:count36)
+df.del.fac.snaps <- merge(freqLabourZ.long, freqLabourZ_comp.long, by=c("Snapshot", "Facility"), all=TRUE)
+df.del.fac.snaps <- df.del.fac.snaps[order(df.del.fac.snaps$Facility, df.del.fac.snaps$Snapshot), ]
+df.del.fac.snaps$CompBirths[is.na(df.del.fac.snaps$CompBirths)] <- 0
+df.del.fac.snaps$UncompBirths <- df.del.fac.snaps$NumBirths - df.del.fac.snaps$CompBirths
+df.del.fac.snaps.long <- gather(df.del.fac.snaps[, -3], BirthType, NumBirths, CompBirths, UncompBirths, factor_key=TRUE)
+
+fac.levels <- paste0("count", 1:37)
+fac.levels <- fac.levels[-c(30, 32)]
+df.del.fac.snaps.long$Facility <- factor(df.del.fac.snaps.long$Facility, levels=fac.levels) 
+df.del.fac.snaps.long <- df.del.fac.snaps.long[order(df.del.fac.snaps.long$Facility, df.del.fac.snaps.long$Snapshot), ]
+levels(df.del.fac.snaps.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p4 <- ggplot(df.del.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
+	scale_fill_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
+	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in delivery rooms") + facet_wrap(~ Facility, ncol=5) +
+	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
+#print(p4)
+ggsave("DelFacilityMonthSingle.png", plot=p4, dpi=300, width=18, height=18)
+
+
+# WOMEN IN MATERNITY BEDS (POST-PARTUM)
+# Plot total number of births and complicated births over a representative month (snapshots, facility occupancy)
+df.del.snaps <- data.frame(Snapshot=breaks3, TotalBirths=rowSums(freqLabourZ[, 2:ncol(freqLabourZ)]), CompBirths=rowSums(freqLabourZ_comp[,2:ncol(freqLabourZ_comp)]))
+df.del.snaps$UncompBirths <- df.del.snaps$TotalBirths - df.del.snaps$CompBirths
+
+# 178:270 are rownumbers of snapshots in March
+df.del.snaps.long <- gather(df.del.snaps[178:270, -2], BirthType, NumBirths, CompBirths, UncompBirths, factor_key=TRUE)
+
+p5 <- ggplot(df.del.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
+	scale_fill_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
+	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in post-partum beds") + 
+	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
+print(p5)
+ggsave("TotalMatMonthSingle.png", plot=p5, dpi=300, width=12, height=8)
+
+
+# Plot number of births and complicated births over a representative month by facility (snapshots, facility occupancy)
+freqLabourZ.long <- gather(freqLabourZ[178:270,], Facility, NumBirths, count1:count37)
+freqLabourZ_comp.long <- gather(freqLabourZ_comp[178:270,], Facility, CompBirths, count5:count36)
+df.del.fac.snaps <- merge(freqLabourZ.long, freqLabourZ_comp.long, by=c("Snapshot", "Facility"), all=TRUE)
+df.del.fac.snaps <- df.del.fac.snaps[order(df.del.fac.snaps$Facility, df.del.fac.snaps$Snapshot), ]
+df.del.fac.snaps$CompBirths[is.na(df.del.fac.snaps$CompBirths)] <- 0
+df.del.fac.snaps$UncompBirths <- df.del.fac.snaps$NumBirths - df.del.fac.snaps$CompBirths
+df.del.fac.snaps.long <- gather(df.del.fac.snaps[, -3], BirthType, NumBirths, CompBirths, UncompBirths, factor_key=TRUE)
+
+fac.levels <- paste0("count", 1:37)
+fac.levels <- fac.levels[-c(30, 32)]
+df.del.fac.snaps.long$Facility <- factor(df.del.fac.snaps.long$Facility, levels=fac.levels) 
+df.del.fac.snaps.long <- df.del.fac.snaps.long[order(df.del.fac.snaps.long$Facility, df.del.fac.snaps.long$Snapshot), ]
+levels(df.del.fac.snaps.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p6 <- ggplot(df.del.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
+	scale_fill_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
+	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in post-partum beds") + facet_wrap(~ Facility, ncol=5) +
+	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
+#print(p6)
+ggsave("MatFacilityMonthSingle.png", plot=p6, dpi=300, width=18, height=18)
+
+
 
 
 #################################################################################################################################

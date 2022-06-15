@@ -33,7 +33,6 @@ factor_dur_comp	<- 1.5	# factor increase in duration in labour ward if delivery 
 prob_CEmOC_comp	<- 0.9	# probability delivery in CEmOC, complicated delivery (NB// assumes all other deliveries in BEmOC)
 prob_CEmOC_uncomp <- 0.33	# probability delivery in CEmOC, uncomplicated delivery (NB// assumes all other deliveries in BEmOC)
 
-births		<- 3600	#35316	# annual number of births
 no_CEmoC		<- 1		# number of CEmOC facilities - SCENARIO 1
 no_BEmOC		<- 2		# number of BEmOC facilities - SCENARIO 1
 					# CHANGE TO no_BEmOC <- 5 FOR SCENARIO 2
@@ -60,17 +59,15 @@ scaleDelU <- 1.23 		#scale parameter, uncomplicated
 data<-read.table("Zanzibar facility dataset.csv", header=T,sep=",", fill=TRUE)
 numFacilities <- nrow(data)
 
-df.fac.snaps<-data[!(data$no_delivs==0),] #deleting facilities #30 and #32 because there are zero deliveries in the dataset
+df.fac.snaps<-data[!(data$no_delivs==0),] #deleting facilities 30 and 32 because there are zero deliveries in the dataset
 
 sum(data$no_delivs)
 births <- 12*sum(data$no_delivs)	#estimated no. births per year in facilities in Zanzibar
 
-#generating distributions - duration in delivery and postpartum rooms, Zanziar and general SSA, for births=annual births in Zanzibar
+#generating distributions - duration in delivery and postpartum rooms, Zanzibar and general SSA, for births=annual births in Zanzibar
 durDelUncomp <- rgamma(n=births,shape=shapeDelU,scale=scaleDelU)				#duration in delivery room, uncomplicated delivery
 durDelComp <- factor_dur_comp*rgamma(n=births,shape=shapeDelU,scale=scaleDelU)	#duration in delivery room, complicated delivery
 
-durPPUWHO <- rgamma(n=births,shape=shapePPUWHO,scale=scalePPUZ)	#duration postpartum, uncomplicated delivery, WHO analysis
-durPPCWHO <- rgamma(n=births,shape=shapePPCWHO,scale=scalePPCZ)	#duration postpartum, complicated delivery, WHO analysis
 durPPUZ <- rgamma(n=births,shape=shapePPUZ,scale=scalePPUZ)		#duration postpartum, uncomplicated delivery, Zanzibar analysis
 durPPCZ <- rgamma(n=births,shape=shapePPCZ,scale=scalePPCZ)		#duration postpartum, complicated delivery, Zanzibar analysis
 
@@ -155,13 +152,9 @@ dur_maternityWHO <- rep(0,births)	# duration in maternity ward according to WHO 
 dur_maternityZ <- rep(0,births)	# duration in maternity ward according to Zanzibar data	
 
 # duration in maternity ward dependant on whether delivery is complicated
-dur_maternityWHO[complicated==1] <- durPPCWHO[complicated==1]
-dur_maternityWHO[complicated==0] <- durPPUWHO[complicated==0]
 dur_maternityZ[complicatedZ==1] <- durPPCZ[complicatedZ==1]
 dur_maternityZ[complicatedZ==0] <- durPPUZ[complicatedZ==0]
 
-
-discharge1WHO <- labour_end + dur_maternityWHO*60*60	#literal discharge time i.e., could be in the middle of the night
 discharge1Z <- labour_end + dur_maternityZ*60*60
 
 
@@ -239,7 +232,6 @@ breaks3 <- breaks[temp=="04:00:00" | temp=="12:00:00" |temp=="20:00:00"]
 
 
 # all births 
-
 dischargeTime <- getDischargeTime(discharge1Z)
 
 facility.numbers <- seq(1, numFacilities)
@@ -562,10 +554,10 @@ p9 <- ggplot(df.overSBA.long, aes(x=Facility, y=PctTimeOverSBACapacity)) + theme
 	ylab("% Time when more women than SBAs in delivery room") + ylim(0, 100) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
 print(p9)
-ggsave("SBACapacityExceeded100.png", plot=p9, dpi=300, width=18, height=9)
+#ggsave("SBACapacityExceeded100.png", plot=p9, dpi=300, width=18, height=9)
 
 pic <- plot_grid(p7, p8, p9, labels=c('a', 'b', 'c'), nrow=3)
-save_plot(filename="capacityLW100.png", plot=pic, base_height=18, base_width=15, dpi=300)
+#save_plot(filename="capacityLW100.png", plot=pic, base_height=18, base_width=15, dpi=300)
 
 
 
@@ -584,6 +576,6 @@ p10 <- ggplot(df.birthsPerSBA, aes(x=Facility, y=BirthsPerSBA)) + theme_classic(
 	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
 print(p10)
-ggsave("birthsPerSBA.png", plot=p10, dpi=300, width=18, height=9)
+#ggsave("birthsPerSBA.png", plot=p10, dpi=300, width=18, height=9)
 
 

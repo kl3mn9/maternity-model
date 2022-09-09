@@ -369,7 +369,7 @@ df.del.fac.snaps1.long <- gather(df.del.fac.snaps1[, -3], BirthType, NumBirths, 
 fac.levels1 <- paste0("count", 1:3)
 df.del.fac.snaps1.long$Facility <- factor(df.del.fac.snaps1.long$Facility, levels=fac.levels1) 
 df.del.fac.snaps1.long <- df.del.fac.snaps1.long[order(df.del.fac.snaps1.long$Facility, df.del.fac.snaps1.long$Snapshot), ]
-levels(df.del.fac.snaps1.long$Facility) <- paste("Facility", 1:3)
+levels(df.del.fac.snaps1.long$Facility) <- paste("Facility", 1:3, c("(CEmOC)", rep("(BEmOC)", 2)))
 
 p5 <- ggplot(df.del.fac.snaps1.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
 	scale_fill_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
@@ -392,18 +392,21 @@ df.del.fac.snaps2.long <- gather(df.del.fac.snaps2[, -3], BirthType, NumBirths, 
 fac.levels2 <- paste0("count", 1:6)
 df.del.fac.snaps2.long$Facility <- factor(df.del.fac.snaps2.long$Facility, levels=fac.levels2) 
 df.del.fac.snaps2.long <- df.del.fac.snaps2.long[order(df.del.fac.snaps2.long$Facility, df.del.fac.snaps2.long$Snapshot), ]
-levels(df.del.fac.snaps2.long$Facility) <- paste("Facility", 1:6)
+levels(df.del.fac.snaps2.long$Facility) <- paste("Facility", 1:6, c("(CEmOC)", rep("(BEmOC)", 5)))
 
 p6 <- ggplot(df.del.fac.snaps2.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
 	scale_fill_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in delivery rooms") + facet_wrap(~ Facility, ncol=3) +
-	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
+	ylim(0,5) +
+	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16), plot.margin=margin(2,0,0,0, "cm"))
 print(p6)
 #ggsave("WHO_S2_DelFacilityMonthSingle.png", plot=p6, dpi=300, width=18, height=12)
 
-
-pic1 <- plot_grid(p5, p6, labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=2, rel_heights=c(1, 2))
-#save_plot(filename="Fig1_WHO_DelFacMonth.png", plot=pic1, base_height=15, base_width=15, dpi=300)
+pcol <- plot_grid(p5 + theme(legend.position="none"), p6 + theme(legend.position="none"), labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=2, rel_heights=c(1, 2))
+legend <- get_legend(p1 + theme(legend.box.margin=margin(0, 0, 0, 12)))
+pic1 <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
+#pic1 <- plot_grid(p5, p6, labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=2, rel_heights=c(1, 2))
+save_plot(filename="Fig1_WHO_DelFacMonth_v2.png", plot=pic1, base_height=15, base_width=15, dpi=300)
 
 
 
@@ -663,8 +666,15 @@ write.csv(x=df.uncompBirthsSBA2, file="WHO_S2_uncompBirthsPerSBA.csv", row.names
 # PLOT PERCENT OF TIME DURING WHICH FACILITIES ARE EMPTY, BIRTHS PER SBA, WOMEN IN FACILITIES BY HOUR
 #################################################################################################################################
 
+#df.birthsSBA1 <- read.csv("WHO3600Births\\WHO_S1_birthsPerSBA.csv")
+#df.birthsSBA2 <- read.csv("WHO3600Births\\WHO_S2_birthsPerSBA.csv")
+#df.compBirthsSBA1 <- read.csv("WHO3600Births\\WHO_S1_compBirthsPerSBA.csv")
+#df.compBirthsSBA2 <- read.csv("WHO3600Births\\WHO_S2_compBirthsPerSBA.csv")
+#df.uncompBirthsSBA1 <- read.csv("WHO3600Births\\WHO_S1_uncompBirthsPerSBA.csv")
+#df.uncompBirthsSBA2 <- read.csv("WHO3600Births\\WHO_S2_uncompBirthsPerSBA.csv")
+
 df.emptyLW1.long <- gather(df.emptyLW1, Facility, PctTimeLWEmpty, count1:count3, factor_key=TRUE)
-levels(df.emptyLW1.long$Facility) <- paste("Facility", 1:3)
+levels(df.emptyLW1.long$Facility) <- paste("Facility", 1:3, c("(CEmOC)", rep("(BEmOC)", 5)))
 
 p9 <- ggplot(df.emptyLW1.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_classic() + geom_boxplot() + 
 	ylab("% Time delivery room is empty") + ylim(0, 100) +
@@ -674,7 +684,7 @@ print(p9)
 
 
 df.emptyLW2.long <- gather(df.emptyLW2, Facility, PctTimeLWEmpty, count1:count6, factor_key=TRUE)
-levels(df.emptyLW2.long$Facility) <- paste("Facility", 1:6)
+levels(df.emptyLW2.long$Facility) <- paste("Facility", 1:6, c("(CEmOC)", rep("(BEmOC)", 5)))
 
 p10 <- ggplot(df.emptyLW2.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_classic() + geom_boxplot() + 
 	ylab("% Time delivery room is empty") + ylim(0, 100) +
@@ -708,26 +718,38 @@ save_plot(filename="Fig3_WHO_birthsPerSBA.png", plot=pic3, base_height=5, base_w
 
 # ALTERNATIVE FIGURE 3
 
-df.alt1 <- rbind(df.compBirthsSBA1, df.uncompBirthsSBA1)
+df.birthsSBA1$Type <- rep("total", nrow(df.birthsSBA1))
+
+df.alt1 <- rbind(df.birthsSBA1, df.compBirthsSBA1, df.uncompBirthsSBA1)
+levels(df.alt1$Facility) <- paste("Facility", 1:3, c("(CEmOC)", rep("(BEmOC)", 2)))
+df.alt1$Type <- factor(df.alt1$Type, levels=c("total", "complicated", "uncomplicated"))
 
 birthsRequired <- 175
 p12 <- ggplot(df.alt1, aes(x=Facility, y=BirthsPerSBA, colour=Type)) + theme_classic() + geom_boxplot() +
-	scale_colour_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
+	scale_colour_manual(values=c("black", "springgreen", "mediumpurple"), labels=c("Total births", "Complicated births", "Uncomplicated births"), name="") +
 	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") + ylim(0, 300) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
 print(p12)
 
-df.alt2 <- rbind(df.compBirthsSBA2, df.uncompBirthsSBA2)
+
+df.birthsSBA2$Type <- rep("total", nrow(df.birthsSBA2))
+
+df.alt2 <- rbind(df.birthsSBA2, df.compBirthsSBA2, df.uncompBirthsSBA2)
+levels(df.alt2$Facility) <- paste("Facility", 1:6, c("(CEmOC)", rep("(BEmOC)", 5)))
+df.alt2$Type <- factor(df.alt2$Type, levels=c("total", "complicated", "uncomplicated"))
 
 p13 <- ggplot(df.alt2, aes(x=Facility, y=BirthsPerSBA, colour=Type)) + theme_classic() + geom_boxplot() +
-	scale_colour_manual(values=c("springgreen", "mediumpurple"), labels=c("Complicated births", "Uncomplicated births"), name="") +
+	scale_colour_manual(values=c("black", "springgreen", "mediumpurple"), labels=c("Total births", "Complicated births", "Uncomplicated births"), name="") +
 	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") + ylim(0, 300) +
-	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1), legend.position="none")
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
 print(p13)
 
 
-pic3alt <- plot_grid(p12, p13, labels=c('a', 'b'), label_size=20, nrow=1)
-save_plot(filename="Fig3alt_WHO_birthsPerSBA.png", plot=pic3alt, base_height=5, base_width=10, dpi=300)
+pcol <- plot_grid(p12 + theme(legend.position="none"), p13 + theme(legend.position="none"), labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=1, rel_heights=c(1, 2))
+legend <- get_legend(p12 + theme(legend.box.margin=margin(0, 0, 0, 12)))
+pic3alt <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
+#pic3alt <- plot_grid(p12, p13, labels=c('a', 'b'), label_size=20, nrow=1)
+save_plot(filename="Fig3alt_WHO_birthsPerSBA_v2.png", plot=pic3alt, base_height=5, base_width=12, dpi=300)
 
 
 

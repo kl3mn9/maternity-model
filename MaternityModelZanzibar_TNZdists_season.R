@@ -7,6 +7,7 @@
 # EDITS BY CAROLIN VEGVARI 07/11/2020
 # USE LOS DISTRIBUTIONS FITTED TO LATEST TANZANIA DHS DATA
 # USE DATA ON SEASONALITY OF BIRTHS IN ZANZIBAR FROM TANZANIA DHS
+# ADD FUNCTION TO SIMULATE SEASONAL BIRTH DATA 09/11/2022
 # github: https://github.com/kl3mn9/maternity-model
 ###################################################################
 
@@ -322,7 +323,7 @@ p1a <- ggplot(df.total.snaps.long.Mar, aes(x=Snapshot, y=NumBirths, fill=BirthTy
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p1a)
-ggsave("TotalBirthsMarch_TNZ.png", plot=p1a, dpi=300, width=12, height=8)
+#ggsave("TotalBirthsMarch_TNZ.png", plot=p1a, dpi=300, width=12, height=8)
 
 
 # Plot number of births and complicated births over a year by facility (snapshots, facility occupancy)
@@ -368,7 +369,7 @@ p2a <- ggplot(df.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) +
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in EmOCs") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p2a)
-ggsave("BirthsFacilityMarch_TNZ.png", plot=p2a, dpi=300, width=18, height=18)
+#ggsave("BirthsFacilityMarch_TNZ.png", plot=p2a, dpi=300, width=18, height=18)
 
 
 
@@ -394,7 +395,7 @@ p3a <- ggplot(df.del.snaps.long.Mar, aes(x=Snapshot, y=NumBirths, fill=BirthType
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in delivery rooms") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p3a)
-ggsave("TotalDelMarch_TNZ.png", plot=p3a, dpi=300, width=12, height=8)
+#ggsave("TotalDelMarch_TNZ.png", plot=p3a, dpi=300, width=12, height=8)
 
 
 
@@ -418,7 +419,7 @@ p4 <- ggplot(df.del.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in delivery rooms") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p4)
-ggsave("DelFacilityYear_TNZ.png", plot=p4, dpi=300, width=18, height=18)
+#ggsave("DelFacilityYear_TNZ.png", plot=p4, dpi=300, width=18, height=18)
 
 
 # Plot number of births and complicated births over a representative month (March) by facility (snapshots, facility occupancy)
@@ -441,7 +442,7 @@ p4a <- ggplot(df.del.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in delivery rooms") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p4a)
-ggsave("DelFacilityMarch_TNZ.png", plot=p4a, dpi=300, width=18, height=18)
+#ggsave("DelFacilityMarch_TNZ.png", plot=p4a, dpi=300, width=18, height=18)
 
 
 
@@ -503,6 +504,16 @@ overSBA4.ll <- list()
 #overMW.ll <- list()
 #emptyMW.ll <- list()
 
+# How can there be centres with labour ward capacity 0? Do women get transferred there from other centres after labour?
+capacityLW <- data$beds_deliv[-c(30, 32)]		
+capacityMW <- data$beds_matern[-c(30, 32)]
+capacity <- capacityLW + capacityMW
+
+capacitySBA_am <- data$SBA_am[-c(30,32)]
+capacitySBA_pm <- data$SBA_pm[-c(30,32)]
+capacitySBA_am4 <- data$SBA_am[-c(30,32)] * 4
+capacitySBA_pm4 <- data$SBA_pm[-c(30,32)] * 4
+
 start <- proc.time()
 
 for(i in 1:n)
@@ -511,15 +522,12 @@ for(i in 1:n)
 	# for births=annual births in Zanzibar
 	durDelUncomp <- rgamma(n=births,shape=shapeDelU,scale=scaleDelU)				#duration in delivery room, uncomplicated delivery
 	durDelComp <- factor_dur_comp*rgamma(n=births,shape=shapeDelU,scale=scaleDelU)	#duration in delivery room, complicated delivery
-	durPPUZ <- rgamma(n=births,shape=shapePPUZ,scale=scalePPUZ)		#duration postpartum, uncomplicated delivery, Zanzibar analysis
-	durPPCZ <- rgamma(n=births,shape=shapePPCZ,scale=scalePPCZ)		#duration postpartum, complicated delivery, Zanzibar analysis
+	durPPUZ <- rgamma(n=births,shape=shapePPUZ,scale=scalePPUZ)					#duration postpartum, uncomplicated delivery, Zanzibar analysis
+	durPPCZ <- rgamma(n=births,shape=shapePPCZ,scale=scalePPCZ)					#duration postpartum, complicated delivery, Zanzibar analysis
 
-	temp3 <- latemail(births)			#each woman set a random date and time of presentation in labour at a health facility
-								#the vector orders them by date (for one year - 2014)
-	tz(temp3) <- timeZone				# set time zone, e.g. to East African Time (for Zanzibar)
-	labour_start <- temp3[sample(births)]	#labour_start dates and times in random order (means date/time of admission to labour ward)
-
-
+	labour_start <- getDT(N=births, weights=weights)	#each woman set a random date and time of presentation in labour at a health facility
+	tz(labour_start) <- timeZone					# set time zone, e.g. to East African Time (for Zanzibar)
+	
 	# assign a facility for delivery and if delivery is complicated
 	facility <- rep(0,births)
 	facility[1:(12*data$no_delivs[1])] <- 1	# the first 5*12 women are assigned facility 1
@@ -572,11 +580,7 @@ for(i in 1:n)
 	# get maternity ward (post-partum) occupancy
 	#freqMatZHour <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks, facility, facility.numbers)	
 
-	# How can there be centres with labour ward capacity 0? Do women get transferred there from other centres after labour?
-	capacityLW <- data$beds_deliv[-c(30, 32)]		
-	capacityMW <- data$beds_matern[-c(30, 32)]
-	capacity <- capacityLW + capacityMW
-
+	
 	# DETERMINE OVERCROWDING IN TERMS OF BEDS
 	# which of the above is the right capacity to evaluate? i.e. do births also happen in maternity wards 
 	# in centres where there are zero delivery beds?
@@ -600,19 +604,15 @@ for(i in 1:n)
 
 
 	# DETERMINE OVERCROWDING IN TERMS OF SBAs BY am AND pm SHIFTS
-	capacitySBA_am <- data$SBA_am[-c(30,32)]
 	hoursLWOverSBA_am <- colSums(sweep(freqLabourZHour[format(freqLabourZHour$Snapshot, "%p")=="am", 2:ncol(freqLabourZHour)], 2, capacitySBA_am, ">"))
-	capacitySBA_pm <- data$SBA_pm[-c(30,32)]
 	hoursLWOverSBA_pm <- colSums(sweep(freqLabourZHour[format(freqLabourZHour$Snapshot, "%p")=="pm", 2:ncol(freqLabourZHour)], 2, capacitySBA_pm, ">"))
 
 	hoursLWOverSBA <- hoursLWOverSBA_am + hoursLWOverSBA_pm 
 	overSBA.ll[[i]] <- hoursLWOverSBA / nrow(freqLabourZHour) * 100
 
 	# DETERMINE OVERCROWDING IN TERMS OF SBAs BY am AND pm SHIFTS (ASSUME 4 WOMEN PER SBA ARE OK)
-	capacitySBA_am4 <- data$SBA_am[-c(30,32)] * 4
-	hoursLWOverSBA_am4 <- colSums(sweep(freqLabourZHour[format(freqLabourZHour$Snapshot, "%p")=="am", 2:ncol(freqLabourZHour)], 2, capacitySBA_am, ">"))
-	capacitySBA_pm4 <- data$SBA_pm[-c(30,32)] * 4
-	hoursLWOverSBA_pm4 <- colSums(sweep(freqLabourZHour[format(freqLabourZHour$Snapshot, "%p")=="pm", 2:ncol(freqLabourZHour)], 2, capacitySBA_pm, ">"))
+	hoursLWOverSBA_am4 <- colSums(sweep(freqLabourZHour[format(freqLabourZHour$Snapshot, "%p")=="am", 2:ncol(freqLabourZHour)], 2, capacitySBA_am4, ">"))
+	hoursLWOverSBA_pm4 <- colSums(sweep(freqLabourZHour[format(freqLabourZHour$Snapshot, "%p")=="pm", 2:ncol(freqLabourZHour)], 2, capacitySBA_pm4, ">"))
 
 	hoursLWOverSBA4 <- hoursLWOverSBA_am4 + hoursLWOverSBA_pm4 
 	overSBA4.ll[[i]] <- hoursLWOverSBA4 / nrow(freqLabourZHour) * 100
@@ -633,6 +633,7 @@ write.csv(x=df.emptyLW, file="pctTimeEmptyLW_TNZseason.csv", row.names=FALSE)
 write.csv(x=df.overSBA, file="pctTimeExceedSBACapacity_TNZseason.csv", row.names=FALSE)
 write.csv(x=df.overSBA, file="pctTimeExceedSBA4Capacity_TNZseason.csv", row.names=FALSE)
 
+
 #################################################################################################################################
 # PLOT PERCENT OF TIME DURING WHICH FACILITIES EXCEED CAPACITY OR ARE EMPTY
 #################################################################################################################################
@@ -644,7 +645,7 @@ p7 <- ggplot(df.overLW.long, aes(x=Facility, y=PctTimeOverLWCapacity)) + theme_c
 	ylab("% Time bed capacity in delivery room exceeded") + ylim(0, 17) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_blank())
 print(p7)
-ggsave("bedCapacityExceeded100_TNZseason.png", plot=p7, dpi=300, width=18, height=9)
+#ggsave("bedCapacityExceeded100_TNZseason.png", plot=p7, dpi=300, width=18, height=9)
 
 df.emptyLW.long <- gather(df.emptyLW, Facility, PctTimeLWEmpty, count1:count37, factor_key=TRUE)
 levels(df.emptyLW.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
@@ -653,7 +654,7 @@ p8 <- ggplot(df.emptyLW.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_classic
 	ylab("% Time delivery room is empty") + ylim(0, 100) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_blank())
 print(p8)
-ggsave("emptyLW100_TNZseason.png", plot=p8, dpi=300, width=18, height=9)
+#ggsave("emptyLW100_TNZseason.png", plot=p8, dpi=300, width=18, height=9)
 
 
 df.overSBA.long <- gather(df.overSBA, Facility, PctTimeOverSBACapacity, count1:count37, factor_key=TRUE)
@@ -663,10 +664,10 @@ p9 <- ggplot(df.overSBA.long, aes(x=Facility, y=PctTimeOverSBACapacity)) + theme
 	ylab("% Time when more women than SBAs in delivery room") + ylim(0, 50) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
 print(p9)
-ggsave("SBACapacityExceeded100_TNZ.png", plot=p9, dpi=300, width=18, height=9)
+#ggsave("SBACapacityExceeded100_TNZ.png", plot=p9, dpi=300, width=18, height=9)
 
 pic <- plot_grid(p7, p8, p9, labels=c('a', 'b', 'c'), nrow=3)
-save_plot(filename="capacityLW100_TNZseason.png", plot=pic, base_height=18, base_width=15, dpi=300)
+#save_plot(filename="capacityLW100_TNZseason.png", plot=pic, base_height=18, base_width=15, dpi=300)
 
 
 df.overSBA4.long <- gather(df.overSBA4, Facility, PctTimeOverSBACapacity, count1:count37, factor_key=TRUE)
@@ -701,5 +702,249 @@ p10 <- ggplot(df.birthsPerSBA, aes(x=Facility, y=BirthsPerSBA)) + theme_classic(
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
 print(p10)
 ggsave("birthsPerSBA_TNZseason.png", plot=p10, dpi=300, width=18, height=9)
+
+
+
+#########################################################################################################
+# % empty delivery room for most and least busy months (June vs January)
+#########################################################################################################
+
+# repeat n times to get mean and 95% credible interval
+n <- 100
+
+emptyLW.Jun.ll <- list()
+emptyLW.Jan.ll <- list()
+overLW.Jun.ll <- list()
+overLW.Jan.ll <- list()
+overSBA.Jun.ll <- list()
+overSBA.Jan.ll <- list()
+overSBA4.Jun.ll <- list()
+overSBA4.Jan.ll <- list()
+
+# How can there be centres with labour ward capacity 0? Do women get transferred there from other centres after labour?
+capacityLW <- data$beds_deliv[-c(30, 32)]		
+
+capacitySBA_am <- data$SBA_am[-c(30,32)]
+capacitySBA_pm <- data$SBA_pm[-c(30,32)]
+capacitySBA_am4 <- data$SBA_am[-c(30,32)] * 4
+capacitySBA_pm4 <- data$SBA_pm[-c(30,32)] * 4
+
+
+start <- proc.time()
+
+for(i in 1:n)
+{
+	# randomly draw distributions of duration in delivery and postpartum rooms 
+	# for births=annual births in Zanzibar
+	durDelUncomp <- rgamma(n=births,shape=shapeDelU,scale=scaleDelU)				#duration in delivery room, uncomplicated delivery
+	durDelComp <- factor_dur_comp*rgamma(n=births,shape=shapeDelU,scale=scaleDelU)	#duration in delivery room, complicated delivery
+
+	labour_start <- getDT(N=births, weights=weights)	#each woman set a random date and time of presentation in labour at a health facility
+	tz(labour_start) <- timeZone					# set time zone, e.g. to East African Time (for Zanzibar)
+	
+	# assign a facility for delivery and if delivery is complicated
+	facility <- rep(0,births)
+	facility[1:(12*data$no_delivs[1])] <- 1	# the first 5*12 women are assigned facility 1
+								# 5 because as per data 5 women have given birth in facility 1 in one month
+								# factor of 12 because we calculate number of births per year from number of births per month
+	temp5 <- rep(0,length(data$no_delivs))
+	temp5[1] <- 1
+	complicatedZ <- rep(0,births)			# complicated births for Zanzibar - determined by how many c sections performed in each facility
+
+	# below we assume that complicated births only occur in facilities that perform c-sections in dataset
+	# if x out of n births in a month at a facility are c-sections 12*x complicated births are assigned to the facility over a year
+	# (and 12*n births in total)
+	for(j in 2:nrow(data)) 
+	{
+		temp5[j] <- temp5[j-1] + 12 * data$no_delivs[j-1]
+		facility[temp5[j]:(temp5[j] - 1 + (12*data$no_delivs[j]))] <- j
+
+		# assigning c-sections
+		if(data$csects[j]>0)  
+		{
+			for(k in temp5[j]:(temp5[j] - 1 + (12*data$csects[j])))	
+				complicatedZ[k] <- 1
+		}
+	} 				
+
+
+	# Duration in the labour ward
+	dur_labour <- rep(0,births)			
+	dur_labour[complicatedZ==1] <- durDelComp[complicatedZ==1]		# duration in labour ward dependant on whether delivery is complicated
+	dur_labour[complicatedZ==0] <- durDelUncomp[complicatedZ==0]	# or uncomplicated
+	dur_labour[dur_labour<min_labour] <- min_labour				# and must be minimum of min_labour
+	labour_end <- labour_start + dur_labour*60*60				#date and time that delivery ends (dur_labour in hours converted into seconds)
+
+		
+	# get occupancy of maternity facilities and delivery rooms every hour
+	breaks <- seq(as.POSIXct('2014-01-01 00:00', tz = "GMT"),by = '1 hours', length = 365*24+1)
+
+
+	# get labour room occupancy
+	freqLabourHour <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks, facility, facility.numbers)
+		
+	# DETERMINE HOW MUCH OF THE TIME LABOUR ROOMS ARE EMPTY
+	hoursLWEmpty.Jan <- colSums(freqLabourHour[1:744, 2:ncol(freqLabourHour)]==0)
+	percentTimeLWEmpty.Jan <- hoursLWEmpty.Jan / nrow(freqLabourHour[1:744,]) * 100
+
+	hoursLWEmpty.Jun <- colSums(freqLabourHour[3624:4344, 2:ncol(freqLabourHour)]==0)
+	percentTimeLWEmpty.Jun <- hoursLWEmpty.Jun / nrow(freqLabourHour[3624:4344,]) * 100
+
+
+	# DETERMINE OVERCROWDING IN TERMS OF BEDS
+	# which of the above is the right capacity to evaluate? i.e. do births also happen in maternity wards 
+	# in centres where there are zero delivery beds?
+	hoursLWOverCapacityJan <- colSums(sweep(freqLabourHour[1:744, 2:ncol(freqLabourHour)], 2, capacityLW, ">"))
+	percentTimeLWOverCapacityJan <- hoursLWOverCapacityJan / nrow(freqLabourHour[1:744,]) * 100
+
+	hoursLWOverCapacityJun <- colSums(sweep(freqLabourHour[3624:4344, 2:ncol(freqLabourHour)], 2, capacityLW, ">"))
+	percentTimeLWOverCapacityJun <- hoursLWOverCapacityJun / nrow(freqLabourHour[3624:4344,]) * 100	
+
+
+	
+	# DETERMINE OVERCROWDING IN TERMS OF SBAs BY am AND pm SHIFTS
+	temp.Jan <- freqLabourHour[1:744,]
+	temp.Jun <- freqLabourHour[3624:4344,]
+	hoursLWOverSBA_am_Jan <- colSums(sweep(temp.Jan[format(temp.Jan$Snapshot, "%p")=="am", 2:ncol(temp.Jan)], 2, capacitySBA_am, ">"))
+	hoursLWOverSBA_pm_Jan <- colSums(sweep(temp.Jan[format(temp.Jan$Snapshot, "%p")=="pm", 2:ncol(temp.Jan)], 2, capacitySBA_pm, ">"))
+	hoursLWOverSBA_am_Jun <- colSums(sweep(temp.Jun[format(temp.Jun$Snapshot, "%p")=="am", 2:ncol(temp.Jun)], 2, capacitySBA_am, ">"))
+	hoursLWOverSBA_pm_Jun <- colSums(sweep(temp.Jun[format(temp.Jun$Snapshot, "%p")=="pm", 2:ncol(temp.Jun)], 2, capacitySBA_pm, ">"))
+
+	hoursLWOverSBAJan <- hoursLWOverSBA_am_Jan + hoursLWOverSBA_pm_Jan 	
+	hoursLWOverSBAJun <- hoursLWOverSBA_am_Jun + hoursLWOverSBA_pm_Jun
+	
+
+	# DETERMINE OVERCROWDING IN TERMS OF SBAs BY am AND pm SHIFTS (ASSUME 4 WOMEN PER SBA ARE OK)
+	hoursLWOverSBA_am4_Jan <- colSums(sweep(temp.Jan[format(temp.Jan$Snapshot, "%p")=="am", 2:ncol(temp.Jan)], 2, capacitySBA_am4, ">"))
+	hoursLWOverSBA_pm4_Jan <- colSums(sweep(temp.Jan[format(temp.Jan$Snapshot, "%p")=="pm", 2:ncol(temp.Jan)], 2, capacitySBA_pm4, ">"))
+	hoursLWOverSBA_am4_Jun <- colSums(sweep(temp.Jun[format(temp.Jun$Snapshot, "%p")=="am", 2:ncol(temp.Jun)], 2, capacitySBA_am4, ">"))
+	hoursLWOverSBA_pm4_Jun <- colSums(sweep(temp.Jun[format(temp.Jun$Snapshot, "%p")=="pm", 2:ncol(temp.Jun)], 2, capacitySBA_pm4, ">"))
+
+
+	hoursLWOverSBA4Jan <- hoursLWOverSBA_am4_Jan + hoursLWOverSBA_pm4_Jan 	
+	hoursLWOverSBA4Jun <- hoursLWOverSBA_am4_Jun + hoursLWOverSBA_pm4_Jun
+
+
+	# append results to lists
+	emptyLW.Jun.ll[[i]] <- percentTimeLWEmpty.Jun
+	emptyLW.Jan.ll[[i]] <- percentTimeLWEmpty.Jan
+
+	overLW.Jun.ll[[i]] <- percentTimeLWOverCapacityJun
+	overLW.Jan.ll[[i]] <- percentTimeLWOverCapacityJan
+
+	overSBA.Jun.ll[[i]] <- hoursLWOverSBAJun / nrow(freqLabourHour[3624:4344,]) * 100
+	overSBA4.Jun.ll[[i]] <- hoursLWOverSBA4Jun / nrow(freqLabourHour[3624:4344,]) * 100
+
+	overSBA.Jan.ll[[i]] <- hoursLWOverSBAJan / nrow(freqLabourHour[1:744,]) * 100
+	overSBA4.Jan.ll[[i]] <- hoursLWOverSBA4Jan / nrow(freqLabourHour[1:744,]) * 100
+	
+}
+
+end <- proc.time() - start
+print(end)
+
+
+df.empty.Jun <- as.data.frame(do.call(rbind, emptyLW.Jun.ll))
+df.empty.Jan <- as.data.frame(do.call(rbind, emptyLW.Jan.ll))
+
+df.overLW.Jun <- as.data.frame(do.call(rbind, overLW.Jun.ll))
+df.overLW.Jan <- as.data.frame(do.call(rbind, overLW.Jan.ll))
+
+df.overSBA.Jun <- as.data.frame(do.call(rbind, overSBA.Jun.ll))
+df.overSBA.Jan <- as.data.frame(do.call(rbind, overSBA.Jan.ll))
+
+df.overSBA4.Jun <- as.data.frame(do.call(rbind, overSBA4.Jun.ll))
+df.overSBA4.Jan <- as.data.frame(do.call(rbind, overSBA4.Jan.ll))
+
+
+df.empty.Jun.long <- gather(df.empty.Jun, Facility, PctTimeLWEmpty, count1:count37, factor_key=TRUE)
+levels(df.empty.Jun.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p11max <- ggplot(df.empty.Jun.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_classic() + geom_boxplot() + 
+	ylab("% Time delivery room is empty") + ylim(0, 100) +
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text=element_text(size=11), axis.text.x=element_text(angle=45, hjust=1, vjust=1))
+print(p11max)
+
+
+df.empty.Jan.long <- gather(df.empty.Jan, Facility, PctTimeLWEmpty, count1:count37, factor_key=TRUE)
+levels(df.empty.Jan.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p11min <- ggplot(df.empty.Jan.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_classic() + geom_boxplot() + 
+	ylab("% Time delivery room is empty") + ylim(0, 100) +
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text=element_text(size=11), axis.text.x=element_text(angle=45, hjust=1, vjust=1))
+print(p11min)
+
+
+df.overSBA.Jun.long <- gather(df.overSBA.Jun, Facility, PctTimeOverSBACapacity, count1:count37, factor_key=TRUE)
+levels(df.overSBA.Jun.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p12max <- ggplot(df.overSBA.Jun.long, aes(x=Facility, y=PctTimeOverSBACapacity)) + theme_classic() + geom_boxplot() + 
+	ylab("% Time when more women than SBAs in delivery room") + ylim(0, 50) +
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
+print(p12max)
+
+
+df.overSBA.Jan.long <- gather(df.overSBA.Jan, Facility, PctTimeOverSBACapacity, count1:count37, factor_key=TRUE)
+levels(df.overSBA.Jan.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p12min <- ggplot(df.overSBA.Jan.long, aes(x=Facility, y=PctTimeOverSBACapacity)) + theme_classic() + geom_boxplot() + 
+	ylab("% Time when more women than SBAs in delivery room") + ylim(0, 50) +
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
+print(p12min)
+
+
+df.overLW.Jun.long <- gather(df.overLW.Jun, Facility, PctTimeOverLWCapacity, count1:count37, factor_key=TRUE)
+levels(df.overLW.Jun.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p13max <- ggplot(df.overLW.Jun.long, aes(x=Facility, y=PctTimeOverLWCapacity)) + theme_classic() + geom_boxplot() + 
+	ylab("% Time bed capacity in delivery room exceeded") + #ylim(0, 17) +
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_blank())
+print(p13max)
+
+
+df.overLW.Jan.long <- gather(df.overLW.Jan, Facility, PctTimeOverLWCapacity, count1:count37, factor_key=TRUE)
+levels(df.overLW.Jan.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p13min <- ggplot(df.overLW.Jan.long, aes(x=Facility, y=PctTimeOverLWCapacity)) + theme_classic() + geom_boxplot() + 
+	ylab("% Time bed capacity in delivery room exceeded") + #ylim(0, 17) +
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_blank())
+print(p13min)
+
+
+
+pic <- plot_grid(p13max, p11max, p12max, labels=c('a', 'b', 'c'), nrow=3)
+save_plot(filename="capacityLW100_TNZseason_Jun.png", plot=pic, base_height=18, base_width=15, dpi=300)
+
+
+pic <- plot_grid(p13min, p11min, p12min, labels=c('a', 'b', 'c'), nrow=3)
+save_plot(filename="capacityLW100_TNZseason_Jan.png", plot=pic, base_height=18, base_width=15, dpi=300)
+
+
+
+df.overSBA4.Jun.long <- gather(df.overSBA4.Jun, Facility, PctTimeOverSBACapacity, count1:count37, factor_key=TRUE)
+levels(df.overSBA4.Jun.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p14max <- ggplot(df.overSBA4.Jun.long, aes(x=Facility, y=PctTimeOverSBACapacity)) + theme_classic() + geom_boxplot() + 
+	ylab("% Time when > 4 women per SBA in delivery room") + ylim(0, 50) +
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
+print(p14max)
+
+
+df.overSBA4.Jan.long <- gather(df.overSBA4.Jan, Facility, PctTimeOverSBACapacity, count1:count37, factor_key=TRUE)
+levels(df.overSBA4.Jan.long$Facility) <- paste("Facility", seq(1, 37)[-c(30,32)])
+
+p14min <- ggplot(df.overSBA4.Jan.long, aes(x=Facility, y=PctTimeOverSBACapacity)) + theme_classic() + geom_boxplot() + 
+	ylab("% Time when > 4 women per SBA in delivery room") + ylim(0, 50) +
+	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
+print(p14min)
+
+
+pic <- plot_grid(p13max, p11max, p14max, labels=c('a', 'b', 'c'), nrow=3)
+save_plot(filename="capacityLW100.4_TNZseason_Jun.png", plot=pic, base_height=18, base_width=15, dpi=300)
+
+pic <- plot_grid(p13min, p11min, p14min, labels=c('a', 'b', 'c'), nrow=3)
+save_plot(filename="capacityLW100.4_TNZseason_Jan.png", plot=pic, base_height=18, base_width=15, dpi=300)
+
+
 
 

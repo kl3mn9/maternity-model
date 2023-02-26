@@ -17,11 +17,15 @@ library(chron)
 library(ggplot2)		# for plotting
 library(tidyr)		# for data formating
 library(cowplot)		# for composite plots
+library(foreach)		# for parallel for loops
+library(doParallel)	# for parallel for loops
+library(doRNG)		# for parallel for loops with random number seed
 
 # set working directory
 setwd("C:\\Users\\Carolin\\Oriole Global Health\\OGH Team - Documents\\02. Business Development\\03. Business Outreach\\MaternityModel\\ZanzibarMaternity\\")
 
-set.seed(42)		#for reproducibility
+seed <- 42
+set.seed(seed)		#for reproducibility
 
 
 ###########################################################################
@@ -32,7 +36,7 @@ prob_comp		<- 0.15	# % deliveries with complications
 min_labour		<- 0.25	# minimum duration in labour ward (hours)
 min_postp		<- 2		# minimum duration in postpartum ward (hours)
 factor_dur_comp	<- 1.5	# factor increase in duration in labour ward if delivery is complicated
-prob_CEmOC_comp	<- 0.9	# probability delivery in CEmOC, complicated delivery (NB// assumes all other deliveries in BEmOC)
+prob_CEmOC_comp	<- 0.5	# probability delivery in CEmOC, complicated delivery (NB// assumes all other deliveries in BEmOC)
 
 births		<- 3600	# WHO World Health Report example
 
@@ -48,12 +52,15 @@ shapeDelU <- 3.37 		#shape parameter, uncomplicated
 scaleDelU <- 1.23 		#scale parameter, uncomplicated
 
 
-# generating distributions - duration in delivery and postpartum rooms
-durDelUncomp <- rgamma(n=births,shape=shapeDelU,scale=scaleDelU)				#duration in delivery room, uncomplicated delivery
-durDelComp <- factor_dur_comp*rgamma(n=births,shape=shapeDelU,scale=scaleDelU)	#duration in delivery room, complicated delivery
+# weight months by number of births per month from Sierra Leone data from Dorelien 2016
+# https://www.demographic-research.org/volumes/vol34/27/ 
+weights <- read.table("SL_seasonality_weights.txt", header=FALSE)[,1]
 
-durPPUWHO <- rgamma(n=births,shape=shapePPUWHO,scale=scalePPUWHO)	#duration postpartum, uncomplicated delivery, WHO analysis
-durPPCWHO <- rgamma(n=births,shape=shapePPCWHO,scale=scalePPCWHO)	#duration postpartum, complicated delivery, WHO analysis
+# create parameter list to be passed to parallel for loops
+params <- list(timeZone=timeZone, prob_comp=prob_comp, min_labour=min_labour, min_postp=min_postp,
+		factor_dur_comp=factor_dur_comp, prob_CEmOC_comp=prob_CEmOC_comp, births=births,
+		shapePPUWHO=shapePPUWHO, scalePPUWHO=scalePPUWHO, shapePPCWHO=shapePPCWHO, scalePPCWHO=scalePPCWHO,
+		shapeDelU=shapeDelU, scaleDelU=scaleDelU, weights=weights)
 
 
 ###########################################################################
@@ -154,14 +161,44 @@ getOccupancyByCentreSnapshot <- function(start, finish, breaks, facility, facili
 }
 
 
+# function to determine occupancy of different wards/rooms depending on starTime, finish entered
+# combine functions event.array, intervals.array and getOccupancy so that function can be passed 
+# as part of transporter to parallel for loops
+getOccupancyByCentreSnapshot2 <- function(start, finish, breaks, facility, facility.numbers)
+{ 
+	len1 <- length(breaks)
+	a.start <- matrix(rep(unclass(start), len1), ncol=len1)
+	a.finish <- matrix(rep(unclass(finish), len1), ncol=len1)
+
+	len2 <- length(start)
+  	a.intervals <- matrix(rep(unclass(breaks), len2), nrow=len2, byrow=TRUE)
+
+	freq <- breaks
+	for(facility.number in facility.numbers)
+	{
+		count <- colSums(a.start[facility==facility.number,] <= a.intervals[facility==facility.number,] & a.finish[facility==facility.number,] >= a.intervals[facility==facility.number,])
+		freq <- cbind(freq, count)	
+	} 
+
+	freq <- as.data.frame(freq)
+	names(freq) <- c("Snapshot", paste0("count", facility.numbers))
+	freq$Snapshot <- breaks
+
+	return(freq)
+}
+
+
 ############################################################
 # START OF SIMULATION
 ############################################################
 
+# generating distributions - duration in delivery and postpartum rooms
+durDelUncomp <- rgamma(n=births,shape=shapeDelU,scale=scaleDelU)				#duration in delivery room, uncomplicated delivery
+durDelComp <- factor_dur_comp*rgamma(n=births,shape=shapeDelU,scale=scaleDelU)	#duration in delivery room, complicated delivery
 
-# weight months by number of births per month from Sierra Leone data from Dorelien 2016
-# https://www.demographic-research.org/volumes/vol34/27/ 
-weights <- read.table("SL_seasonality_weights.txt", header=FALSE)[,1]
+durPPUWHO <- rgamma(n=births,shape=shapePPUWHO,scale=scalePPUWHO)	#duration postpartum, uncomplicated delivery, WHO analysis
+durPPCWHO <- rgamma(n=births,shape=shapePPCWHO,scale=scalePPCWHO)	#duration postpartum, complicated delivery, WHO analysis
+
 
 labour_start <- getDT(births, weights=weights)		# each woman set a random date and time of presentation in labour at a health facility
 tz(labour_start) <- timeZone					# set time zone, e.g. to East African Time (for Zanzibar)
@@ -201,6 +238,9 @@ discharge1WHO <- labour_end + dur_maternityWHO*60*60	# literal discharge time i.
 # SCENARIO 2: 1 CEmOC with 10 SBAs, 5 BEmOCs with 2 SBAs each
 # BOTH SCENARIOS: complicated deliveries happen in CEmOC with probability 0.9
 #			uncomplicated births equally likely to happen in any facility
+# ALTERNATIVE: All births happen in CEmOC with probability 0.5 (reflecting 
+# preferences of women about to give birth), remaining births are equally likely
+# to happen in any BEmOC facility
 ################################################################################
 
 facility1 <- rep(0, births)		# facility allocation for Scenario 1
@@ -210,11 +250,11 @@ tempWHO <- runif(births, 0, 1)
 # ALLOCATE FACILITIES IN SCENARIO 1 (3 FACILITIES IN TOTAL)
 # allocate complicated births
 facility1 <- ifelse(complicated == 1 & tempWHO <= prob_CEmOC_comp, 1, 0)
-facility1[tempWHO < 0.5 & complicated == 1 & facility1 == 0] <- 2
-facility1[tempWHO >= 0.5 & complicated == 1 & facility1 == 0] <- 3
+facility1[complicated==1 & facility1==0] <- sample(2:3, size=length(facility1[complicated==1 & facility1==0]), replace=TRUE)
+
 
 # allocate uncomplicated births
-facility1[complicated==0] <- sample(1:3, size=length(facility1[complicated==0]), replace=TRUE)
+facility1[complicated==0] <- sample(1:3, size=length(facility1[complicated==0]), prob=c(0.5, 0.25, 0.25), replace=TRUE)
 
 
 # ALLOCATE FACILITIES IN SCENARIO 2 (6 FACILITIES IN TOTAL)
@@ -223,7 +263,7 @@ facility2 <- ifelse(complicated == 1 & tempWHO <= prob_CEmOC_comp, 1, 0)
 facility2[complicated==1 & facility2==0] <- sample(2:6, size=length(facility2[complicated==1 & facility2==0]), replace=TRUE)
 
 # allocate uncomplicated births
-facility2[complicated==0] <- sample(1:6, size=length(facility2[complicated==0]), replace=TRUE)
+facility2[complicated==0] <- sample(1:6, size=length(facility2[complicated==0]), prob=c(0.5, 0.1, 0.1, 0.1, 0.1, 0.1), replace=TRUE)
 
 
 #################################################################################################################################
@@ -540,18 +580,18 @@ print(p6a)
 #ggsave("WHO_S2_DelFacilityYear.png", plot=p6a, dpi=300, width=18, height=12)
 
 
-pcol <- plot_grid(p5 + theme(legend.position="none"), p6 + theme(legend.position="none"), labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=2, rel_heights=c(1, 2))
+pcol <- plot_grid(p5 + theme(legend.position="none"), p6 + theme(legend.position="none"), labels=c('A', 'B'), label_size=20, label_y=1.0, nrow=2, rel_heights=c(1, 2))
 legend <- get_legend(p1a + theme(legend.box.margin=margin(0, 0, 0, 12)))
 pic1 <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
 #pic1 <- plot_grid(p5, p6, labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=2, rel_heights=c(1, 2))
-#save_plot(filename="Fig1_WHO_DelFacMonth_v2_season.png", plot=pic1, base_height=15, base_width=15, dpi=300)
+#save_plot(filename="Fig1_WHO_DelFacMonth_v2_season_CEmOC.png", plot=pic1, base_height=15, base_width=15, dpi=300)
 
 
-pcola <- plot_grid(p5a + theme(legend.position="none"), p6a + theme(legend.position="none"), labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=2, rel_heights=c(1, 2))
+pcola <- plot_grid(p5a + theme(legend.position="none"), p6a + theme(legend.position="none"), labels=c('A', 'B'), label_size=20, label_y=1.03, nrow=2, rel_heights=c(1, 2))
 legenda <- get_legend(p1a + theme(legend.box.margin=margin(0, 0, 0, 12)))
 pic1a <- plot_grid(pcola, legenda, rel_widths=c(3, 0.8))
 #pic1 <- plot_grid(p5, p6, labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=2, rel_heights=c(1, 2))
-#save_plot(filename="Fig1_WHO_DelFacYear_v2_season.png", plot=pic1a, base_height=15, base_width=15, dpi=300)
+#save_plot(filename="Fig1_WHO_DelFacYear_v2_season_CEmOC.png", plot=pic1a, base_height=15, base_width=15, dpi=300)
 
 
 
@@ -608,35 +648,31 @@ print(p8)
 #################################################################################################################################
 
 # repeat n times to get mean and 95% credible interval
-n <- 100
+n <- 1000
 
 nrSBAbyFac1 <- c(10, 5, 5)
-LW1.ll <- list()
-emptyLW1.ll <- list()
-#emptyMW1.ll <- list()
-birthsPerSBA1.ll <- list()
-compBirthsPerSBA1.ll <- list()
-uncompBirthsPerSBA1.ll <- list()
-
 nrSBAbyFac2 <- c(10, rep(2, 5))
-LW2.ll <- list()
-emptyLW2.ll <- list()
-#emptyMW2.ll <- list()
-birthsPerSBA2.ll <- list()
-compBirthsPerSBA2.ll <- list()
-uncompBirthsPerSBA2.ll <- list()
 
-start <- proc.time()
+params$nrSBAbyFac1 <- nrSBAbyFac1
+params$nrSBAbyFac2 <- nrSBAbyFac2
 
-for(i in 1:n)
+
+# FUNCTION AND DATA TRANSPORTER FOR PARALLEL CODE
+FT <- list(getDT=match.fun(getDT), getDischargeTime=match.fun(getDischargeTime),  
+	getOccupancyByCentreSnapshot2=match.fun(getOccupancyByCentreSnapshot2))
+
+
+calcFacStats <- function(params, FT)
 {
+	with(params, {
+	
 	# randomly draw distributions of duration in delivery and postpartum rooms 
 	durDelUncomp <- rgamma(n=births,shape=shapeDelU,scale=scaleDelU)				# duration in delivery room, uncomplicated delivery
 	durDelComp <- factor_dur_comp*rgamma(n=births,shape=shapeDelU,scale=scaleDelU)	# duration in delivery room, complicated delivery
 	durPPUWHO <- rgamma(n=births,shape=shapePPUWHO,scale=scalePPUWHO)				# duration postpartum, uncomplicated delivery
 	durPPCWHO <- rgamma(n=births,shape=shapePPCWHO,scale=scalePPCWHO)				# duration postpartum, complicated delivery
 
-	labour_start <- getDT(N=births, weights=weights)	# each woman set a random date and time of presentation in labour at a health facility
+	labour_start <- FT$getDT(N=births, weights=weights)	# each woman set a random date and time of presentation in labour at a health facility
 	tz(labour_start) <- timeZone					# set time zone, e.g. to East African Time 
 	
 	complicated <- rbinom(births, 1, prob_comp)	# assign whether each woman has a complicated delivery: 1= complicated 0= uncomplicated
@@ -650,11 +686,11 @@ for(i in 1:n)
 	# ALLOCATE FACILITIES IN SCENARIO 1 (3 FACILITIES IN TOTAL)
 	# allocate complicated births
 	facility1 <- ifelse(complicated == 1 & tempWHO <= prob_CEmOC_comp, 1, 0)
-	facility1[tempWHO < 0.5 & complicated == 1 & facility1 == 0] <- 2
-	facility1[tempWHO >= 0.5 & complicated == 1 & facility1 == 0] <- 3
+	facility1[complicated==1 & facility1==0] <- sample(2:3, size=length(facility1[complicated==1 & facility1==0]), replace=TRUE)
 
 	# allocate uncomplicated births
-	facility1[complicated==0] <- sample(1:3, size=length(facility1[complicated==0]), replace=TRUE)
+	facility1[complicated==0] <- sample(1:3, size=length(facility1[complicated==0]), prob=c(0.5, 0.25, 0.25), replace=TRUE)
+
 
 	# ALLOCATE FACILITIES IN SCENARIO 2 (6 FACILITIES IN TOTAL)
 	# allocate complicated births
@@ -662,7 +698,7 @@ for(i in 1:n)
 	facility2[complicated==1 & facility2==0] <- sample(2:6, size=length(facility2[complicated==1 & facility2==0]), replace=TRUE)
 
 	# allocate uncomplicated births
-	facility2[complicated==0] <- sample(1:6, size=length(facility2[complicated==0]), replace=TRUE)
+	facility2[complicated==0] <- sample(1:6, size=length(facility2[complicated==0]), prob=c(0.5, 0.1, 0.1, 0.1, 0.1, 0.1), replace=TRUE)
 
 
 	# Duration in the labour ward
@@ -680,20 +716,17 @@ for(i in 1:n)
 	dur_maternity[complicated==0] <- durPPUWHO[complicated==0]
 
 	discharge1 <- labour_end + dur_maternity*60*60		# literal discharge time, could be in the middle of the night
-	dischargeTime <- getDischargeTime(discharge1)		# change discharge time at night to early morning
+	dischargeTime <- FT$getDischargeTime(discharge1)		# change discharge time at night to early morning
 
 
 	# get occupancy of maternity facilities and delivery rooms every hour
 	breaks <- seq(as.POSIXct('2014-01-01 00:00', tz = "GMT"),by = '1 hours', length = 365*24+1)
 
 	# get labour room occupancy
-	freqLabour1Hour <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks, facility1, 1:3)
-	freqLabour2Hour <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks, facility2, 1:6)
+	freqLabour1Hour <- FT$getOccupancyByCentreSnapshot2(labour_start, labour_end, breaks, facility1, 1:3)
+	freqLabour2Hour <- FT$getOccupancyByCentreSnapshot2(labour_start, labour_end, breaks, facility2, 1:6)
 
-	# get maternity ward (post-partum) occupancy
-	#freqMat1Hour <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks, facility1, 1:3)
-	#freqMat2Hour <- getOccupancyByCentreSnapshot(labour_end, dischargeTime, breaks, facility2, 1:6)
-	
+
 	# LABOUR WARD OCCUPANCY HISTOGRAM
 	totalHoursLW1 <- colSums(freqLabour1Hour[2:4])
 	df1 <- lapply(freqLabour1Hour[,2:4], factor, levels=unique(unlist(freqLabour1Hour[2:4])))
@@ -714,11 +747,6 @@ for(i in 1:n)
 	hoursLWEmpty2 <- colSums(freqLabour2Hour[, 2:ncol(freqLabour2Hour)]==0)
 	percentTimeLWEmpty2 <- hoursLWEmpty2 / nrow(freqLabour2Hour) * 100
 
-	# DETERMINE HOW MUCH OF THE TIME MATERNITY ROOMS ARE EMPTY
-	#hoursMWEmpty1 <- colSums(freqMat1Hour[, 2:ncol(freqMat1Hour)]==0)
-	#percentTimeMWEmpty1 <- hoursMWEmpty1 / nrow(freqMat1Hour) * 100
-	#hoursMWEmpty2 <- colSums(freqMat2Hour[, 2:ncol(freqMat2Hour)]==0)
-	#percentTimeMWEmpty2 <- hoursMWEmpty2 / nrow(freqMat2Hour) * 100
 
 	# DETERMINE TOTAL BIRTHS PER SBA PER YEAR
 	birthsPerSBA1 <- as.vector(table(facility1) / nrSBAbyFac1)
@@ -730,8 +758,8 @@ for(i in 1:n)
 	df.birthsPerSBA2$Facility <- factor(df.birthsPerSBA2$Facility, levels=paste("Facility", 1:6))
 
 	# DETERMINE COMPLICATED BIRTHS PER SBA PER YEAR
-	compBirthsPerSBA1 <- as.vector(table(facility1[complicated==1]) / c(10, 5))
-	df.compBirthsPerSBA1 <- data.frame(Facility=paste("Facility", c(1,3)), BirthsPerSBA=compBirthsPerSBA1)
+	compBirthsPerSBA1 <- as.vector(table(facility1[complicated==1]) / nrSBAbyFac1)
+	df.compBirthsPerSBA1 <- data.frame(Facility=paste("Facility", c(1:3)), BirthsPerSBA=compBirthsPerSBA1)
 	df.compBirthsPerSBA1$Facility <- factor(df.compBirthsPerSBA1$Facility, levels=paste("Facility", 1:3))
 
 	compBirthsPerSBA2 <- as.vector(table(facility2[complicated==1]) / nrSBAbyFac2)
@@ -748,35 +776,72 @@ for(i in 1:n)
 	df.uncompBirthsPerSBA2$Facility <- factor(df.uncompBirthsPerSBA2$Facility, levels=paste("Facility", 1:6))
 
 
-	# append results to lists
-	LW1.ll[[i]] <- LW1byHour
-	LW2.ll[[i]] <- LW2byHour
+	res <- list(LW1byHour=LW1byHour, LW2byHour=LW2byHour, percentTimeLWEmpty1=percentTimeLWEmpty1,
+			percentTimeLWEmpty2=percentTimeLWEmpty2, df.birthsPerSBA1=df.birthsPerSBA1, df.birthsPerSBA2=df.birthsPerSBA2,
+			df.compBirthsPerSBA1=df.compBirthsPerSBA1, df.compBirthsPerSBA2=df.compBirthsPerSBA2,
+			df.uncompBirthsPerSBA1=df.uncompBirthsPerSBA1, df.uncompBirthsPerSBA2=df.uncompBirthsPerSBA2)
 
-	emptyLW1.ll[[i]] <- percentTimeLWEmpty1
-	emptyLW2.ll[[i]] <- percentTimeLWEmpty2
-	#emptyMW1.ll[[i]] <- percentTimeMWEmpty1
-	#emptyMW2.ll[[i]] <- percentTimeMWEmpty2
+	return(res)
 
-	birthsPerSBA1.ll[[i]] <- df.birthsPerSBA1
-	birthsPerSBA2.ll[[i]] <- df.birthsPerSBA2
-
-	compBirthsPerSBA1.ll[[i]] <- df.compBirthsPerSBA1
-	compBirthsPerSBA2.ll[[i]] <- df.compBirthsPerSBA2
-
-	uncompBirthsPerSBA1.ll[[i]] <- df.uncompBirthsPerSBA1
-	uncompBirthsPerSBA2.ll[[i]] <- df.uncompBirthsPerSBA2
+	})
 
 }
 
+start <- proc.time()
+
+# set up cluster
+cl <- makeCluster(8)
+registerDoParallel(cl)
+registerDoRNG(seed=seed)
+
+# call parallel for loop
+foreachResults <- foreach(i=1:n, .packages=c("lubridate")) %dorng% calcFacStats(params, FT)
+#res <- calcFacStats(params,FT)
+
+# end cluster
+stopImplicitCluster()
+
 end <- proc.time() - start
 print(end)
+
+
+LW1.ll <- list()
+emptyLW1.ll <- list()
+birthsPerSBA1.ll <- list()
+compBirthsPerSBA1.ll <- list()
+uncompBirthsPerSBA1.ll <- list()
+
+LW2.ll <- list()
+emptyLW2.ll <- list()
+birthsPerSBA2.ll <- list()
+compBirthsPerSBA2.ll <- list()
+uncompBirthsPerSBA2.ll <- list()
+
+
+for(i in 1:length(foreachResults))
+{
+	# append results to lists
+	LW1.ll[[i]] <- foreachResults[[i]]$LW1byHour
+	LW2.ll[[i]] <- foreachResults[[i]]$LW2byHour
+
+	emptyLW1.ll[[i]] <- foreachResults[[i]]$percentTimeLWEmpty1
+	emptyLW2.ll[[i]] <- foreachResults[[i]]$percentTimeLWEmpty2
+	
+	birthsPerSBA1.ll[[i]] <- foreachResults[[i]]$df.birthsPerSBA1
+	birthsPerSBA2.ll[[i]] <- foreachResults[[i]]$df.birthsPerSBA2
+
+	compBirthsPerSBA1.ll[[i]] <- foreachResults[[i]]$df.compBirthsPerSBA1
+	compBirthsPerSBA2.ll[[i]] <- foreachResults[[i]]$df.compBirthsPerSBA2
+
+	uncompBirthsPerSBA1.ll[[i]] <- foreachResults[[i]]$df.uncompBirthsPerSBA1
+	uncompBirthsPerSBA2.ll[[i]] <- foreachResults[[i]]$df.uncompBirthsPerSBA2
+}
+
 
 df.LW1 <- as.data.frame(do.call(rbind, LW1.ll))
 df.LW2 <- as.data.frame(do.call(rbind, LW2.ll))
 df.emptyLW1 <- as.data.frame(do.call(rbind, emptyLW1.ll))
 df.emptyLW2 <- as.data.frame(do.call(rbind, emptyLW2.ll))
-#df.emptyMW1 <- as.data.frame(do.call(rbind, emptyMW1.ll))
-#df.emptyMW2 <- as.data.frame(do.call(rbind, emptyMW2.ll))
 df.birthsSBA1 <- as.data.frame(do.call(rbind, birthsPerSBA1.ll))
 df.birthsSBA2 <- as.data.frame(do.call(rbind, birthsPerSBA2.ll))
 df.compBirthsSBA1 <- as.data.frame(do.call(rbind, compBirthsPerSBA1.ll))
@@ -791,26 +856,24 @@ df.uncompBirthsSBA2$Type <- rep("uncomplicated", nrow(df.uncompBirthsSBA2))
 
 
 # save output data
-#write.csv(x=df.LW1, file="WHO_S1_womenByHour_season.csv", row.names=FALSE)
-#write.csv(x=df.LW2, file="WHO_S2_womenByHour_season.csv", row.names=FALSE)
-#write.csv(x=df.emptyLW1, file="WHO_S1_pctTimeEmptyLW_season.csv", row.names=FALSE)
-#write.csv(x=df.emptyLW2, file="WHO_S2_pctTimeEmptyLW_season.csv", row.names=FALSE)
-#write.csv(x=df.emptyMW1, file="WHO_S1_pctTimeEmptyMW_season.csv", row.names=FALSE)
-#write.csv(x=df.emptyMW2, file="WHO_S2_pctTimeEmptyMW_season.csv", row.names=FALSE)
-#write.csv(x=df.birthsSBA1, file="WHO_S1_birthsPerSBA_season.csv", row.names=FALSE)
-#write.csv(x=df.birthsSBA2, file="WHO_S2_birthsPerSBA_season.csv", row.names=FALSE)
-#write.csv(x=df.compBirthsSBA1, file="WHO_S1_compBirthsPerSBA_season.csv", row.names=FALSE)
-#write.csv(x=df.compBirthsSBA2, file="WHO_S2_compBirthsPerSBA_season.csv", row.names=FALSE)
-#write.csv(x=df.uncompBirthsSBA1, file="WHO_S1_uncompBirthsPerSBA_season.csv", row.names=FALSE)
-#write.csv(x=df.uncompBirthsSBA2, file="WHO_S2_uncompBirthsPerSBA_season.csv", row.names=FALSE)
+#write.csv(x=df.LW1, file="WHO_S1_womenByHour_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.LW2, file="WHO_S2_womenByHour_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.emptyLW1, file="WHO_S1_pctTimeEmptyLW_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.emptyLW2, file="WHO_S2_pctTimeEmptyLW_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.birthsSBA1, file="WHO_S1_birthsPerSBA_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.birthsSBA2, file="WHO_S2_birthsPerSBA_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.compBirthsSBA1, file="WHO_S1_compBirthsPerSBA_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.compBirthsSBA2, file="WHO_S2_compBirthsPerSBA_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.uncompBirthsSBA1, file="WHO_S1_uncompBirthsPerSBA_season_CEmOC.csv", row.names=FALSE)
+#write.csv(x=df.uncompBirthsSBA2, file="WHO_S2_uncompBirthsPerSBA_season_CEmOC.csv", row.names=FALSE)
 
 
 #################################################################################################################################
 # PLOT PERCENT OF TIME DURING WHICH FACILITIES ARE EMPTY, BIRTHS PER SBA, WOMEN IN FACILITIES BY HOUR
 #################################################################################################################################
 
-#df.emptyLW1 <- read.csv("WHO3600Births_season\\WHO_S1_pctTimeEmptyLW_season.csv")
-#df.emptyLW2 <- read.csv("WHO3600Births_season\\WHO_S2_pctTimeEmptyLW_season.csv")
+df.emptyLW1 <- read.csv("WHO3600_CEmOC_preference_season\\1000iter\\WHO_S1_pctTimeEmptyLW_season_CEmOC.csv")
+df.emptyLW2 <- read.csv("WHO3600_CEmOC_preference_season\\1000iter\\WHO_S2_pctTimeEmptyLW_season_CEmOC.csv")
 #df.birthsSBA1 <- read.csv("WHO3600Births_season\\WHO_S1_birthsPerSBA_season.csv")
 #df.birthsSBA2 <- read.csv("WHO3600Births_season\\WHO_S2_birthsPerSBA_season.csv")
 #df.compBirthsSBA1 <- read.csv("WHO3600Births_season\\WHO_S1_compBirthsPerSBA_season.csv")
@@ -839,29 +902,11 @@ print(p10)
 
 
 pic2 <- plot_grid(p9, p10, labels=c('a', 'b'), label_size=20, nrow=1)
-#save_plot(filename="Fig2_WHO_emptyLW_season.png", plot=pic2, base_height=5, base_width=10, dpi=300)
+save_plot(filename="Fig2_WHO_emptyLW_season.png", plot=pic2, base_height=5, base_width=10, dpi=300)
 
 
-birthsRequired <- 175
-p11 <- ggplot(df.birthsSBA1, aes(x=Facility, y=BirthsPerSBA)) + theme_classic() + geom_boxplot() +
-	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") + ylim(0, 300) +
-	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
-print(p11)
-#ggsave("WHO_S1_birthsPerSBA_season.png", plot=p11, dpi=300, width=9, height=5)
 
-
-p12 <- ggplot(df.birthsSBA2, aes(x=Facility, y=BirthsPerSBA)) + theme_classic() + geom_boxplot() +
-	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") + ylim(0, 300) +
-	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
-print(p12)
-#ggsave("WHO_S2_birthsPerSBA_season.png", plot=p12, dpi=300, width=9, height=5)
-
-
-pic3 <- plot_grid(p11, p12, labels=c('a', 'b'), label_size=20, nrow=1)
-#save_plot(filename="Fig3_WHO_birthsPerSBA_season.png", plot=pic3, base_height=5, base_width=10, dpi=300)
-
-
-# ALTERNATIVE FIGURE 3
+# FIGURE 3
 
 df.birthsSBA1$Type <- rep("total", nrow(df.birthsSBA1))
 
@@ -872,7 +917,7 @@ df.alt1$Type <- factor(df.alt1$Type, levels=c("total", "complicated", "uncomplic
 birthsRequired <- 175
 p12 <- ggplot(df.alt1, aes(x=Facility, y=BirthsPerSBA, colour=Type)) + theme_classic() + geom_boxplot() +
 	scale_colour_manual(values=c("black", "springgreen", "mediumpurple"), labels=c("Total births", "Complicated births", "Uncomplicated births"), name="") +
-	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") + ylim(0, 300) +
+	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") + ylim(0, 310) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
 print(p12)
 
@@ -885,20 +930,20 @@ df.alt2$Type <- factor(df.alt2$Type, levels=c("total", "complicated", "uncomplic
 
 p13 <- ggplot(df.alt2, aes(x=Facility, y=BirthsPerSBA, colour=Type)) + theme_classic() + geom_boxplot() +
 	scale_colour_manual(values=c("black", "springgreen", "mediumpurple"), labels=c("Total births", "Complicated births", "Uncomplicated births"), name="") +
-	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") + ylim(0, 300) +
+	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + ylab("Births per SBA per year") + ylim(0, 310) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1))
 print(p13)
 
 
-pcol <- plot_grid(p12 + theme(legend.position="none"), p13 + theme(legend.position="none"), labels=c('a', 'b'), label_size=20, label_y=1.03, nrow=1, rel_heights=c(1, 2))
+pcol <- plot_grid(p12 + theme(legend.position="none"), p13 + theme(legend.position="none"), labels=c('A', 'B'), label_size=20, label_y=1.0, nrow=1, rel_heights=c(1, 2))
 legend <- get_legend(p12 + theme(legend.box.margin=margin(0, 0, 0, 12)))
-pic3alt <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
-#pic3alt <- plot_grid(p12, p13, labels=c('a', 'b'), label_size=20, nrow=1)
-#save_plot(filename="Fig3alt_WHO_birthsPerSBA_v2_season.png", plot=pic3alt, base_height=5, base_width=12, dpi=300)
+pic3 <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
+save_plot(filename="Fig3alt_WHO_birthsPerSBA_v2_season_CEmOC.png", plot=pic3, base_height=5, base_width=12, dpi=300)
 
 
 
 df.LW1.long <- gather(df.LW1, Facility, Hours, count1:count3, factor_key=TRUE)
+df.LW1.long <- df.LW1.long[order(df.LW1.long$Women),]
 df.LW1.long$Women <- factor(df.LW1.long$Women, levels=unique(df.LW1.long$Women))
 levels(df.LW1.long$Facility) <- paste("Facility", 1:3)
 
@@ -906,10 +951,11 @@ p13 <- ggplot(df.LW1.long, aes(x=Women, y=Hours, colour=Facility)) + theme_class
 	ylab("Number of hours") + xlab("Number of women in delivery room") + scale_colour_manual(values=c("red", "dodgerblue", "deepskyblue")) +
 	theme(axis.title=element_text(size=16), axis.text.y=element_text(size=16), axis.text.x=element_text(size=16, angle=45, hjust=1, vjust=1), legend.title=element_text(size=16), legend.text=element_text(size=16))
 print(p13)
-#ggsave("WHO_S1_hoursWomen_season.png", plot=p13, dpi=300, width=12, height=9)
+ggsave("WHO_S1_hoursWomen_season.png", plot=p13, dpi=300, width=12, height=9)
 
 
 df.LW2.long <- gather(df.LW2, Facility, Hours, count1:count6, factor_key=TRUE)
+df.LW2.long <- df.LW2.long[order(df.LW2.long$Women),]
 df.LW2.long$Women <- factor(df.LW2.long$Women, levels=unique(df.LW2.long$Women))
 levels(df.LW2.long$Facility) <- paste("Facility", 1:6)
 
@@ -917,8 +963,7 @@ p14 <- ggplot(df.LW2.long, aes(x=Women, y=Hours, colour=Facility)) + theme_class
 	ylab("Number of hours") + xlab("Number of women in delivery room") + scale_colour_manual(values=c("red", "dodgerblue", "deepskyblue", "cadetblue", "blue", "navy")) +
 	theme(axis.title=element_text(size=16), axis.text.y=element_text(size=16), axis.text.x=element_text(size=16, angle=45, hjust=1, vjust=1), legend.title=element_text(size=16), legend.text=element_text(size=16))
 print(p14)
-#ggsave("WHO_S2_hoursWomen_season.png", plot=p14, dpi=300, width=12, height=9)
-
+ggsave("WHO_S2_hoursWomen_season.png", plot=p14, dpi=300, width=12, height=9)
 
 
 
@@ -926,9 +971,6 @@ print(p14)
 # HOW MANY WOMEN COME INTO FACILITIES AT NIGHT WHEN THEY ARE UNSTAFFED (SCENARIO 2 WITH 2 SBAs PER BEmOC ONLY)
 # --> EVALUATE CAPACITY EVERY HOUR RATHER THAN EVERY 8 HOURS
 #################################################################################################################################
-
-# repeat n times to get mean and 95% credible interval
-n <- 100
 
 ll.women.night <- list()
 ll.women.night.comp <- list()
@@ -979,25 +1021,18 @@ sd(unlist(ll.women.night.comp))
 #########################################################################################################
 # % empty delivery room for most and least busy months (January vs November)
 
-# repeat n times to get mean and 95% credible interval
-n <- 100
 
-emptyLW1.Jan.ll <- list()
-emptyLW1.Nov.ll <- list()
-emptyLW2.Jan.ll <- list()
-emptyLW2.Nov.ll <- list()
-
-start <- proc.time()
-
-for(i in 1:n)
+calcFacStatsMinMax <- function(params, FT)
 {
+	with(params, {
+
 	# randomly draw distributions of duration in delivery and postpartum rooms 
 	durDelUncomp <- rgamma(n=births,shape=shapeDelU,scale=scaleDelU)				# duration in delivery room, uncomplicated delivery
 	durDelComp <- factor_dur_comp*rgamma(n=births,shape=shapeDelU,scale=scaleDelU)	# duration in delivery room, complicated delivery
 	durPPUWHO <- rgamma(n=births,shape=shapePPUWHO,scale=scalePPUWHO)				# duration postpartum, uncomplicated delivery
 	durPPCWHO <- rgamma(n=births,shape=shapePPCWHO,scale=scalePPCWHO)				# duration postpartum, complicated delivery
 
-	labour_start <- getDT(N=births, weights=weights)	# each woman set a random date and time of presentation in labour at a health facility
+	labour_start <- FT$getDT(N=births, weights=weights)	# each woman set a random date and time of presentation in labour at a health facility
 	tz(labour_start) <- timeZone					# set time zone, e.g. to East African Time 
 	
 	complicated <- rbinom(births, 1, prob_comp)	# assign whether each woman has a complicated delivery: 1= complicated 0= uncomplicated
@@ -1011,8 +1046,7 @@ for(i in 1:n)
 	# ALLOCATE FACILITIES IN SCENARIO 1 (3 FACILITIES IN TOTAL)
 	# allocate complicated births
 	facility1 <- ifelse(complicated == 1 & tempWHO <= prob_CEmOC_comp, 1, 0)
-	facility1[tempWHO < 0.5 & complicated == 1 & facility1 == 0] <- 2
-	facility1[tempWHO >= 0.5 & complicated == 1 & facility1 == 0] <- 3
+	facility1[complicated==1 & facility1==0] <- sample(2:3, size=length(facility1[complicated==1 & facility1==0]), replace=TRUE)
 
 	# allocate uncomplicated births
 	facility1[complicated==0] <- sample(1:3, size=length(facility1[complicated==0]), replace=TRUE)
@@ -1038,8 +1072,8 @@ for(i in 1:n)
 	breaks <- seq(as.POSIXct('2014-01-01 00:00', tz = timeZone),by = '1 hours', length = 365*24+1)
 
 	# get labour room occupancy
-	freqLabour1Hour <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks, facility1, 1:3)
-	freqLabour2Hour <- getOccupancyByCentreSnapshot(labour_start, labour_end, breaks, facility2, 1:6)
+	freqLabour1Hour <- FT$getOccupancyByCentreSnapshot2(labour_start, labour_end, breaks, facility1, 1:3)
+	freqLabour2Hour <- FT$getOccupancyByCentreSnapshot2(labour_start, labour_end, breaks, facility2, 1:6)
 
 	
 	# DETERMINE HOW MUCH OF THE TIME LABOUR ROOMS ARE EMPTY
@@ -1047,10 +1081,6 @@ for(i in 1:n)
 	percentTimeLWEmpty1.Jan <- hoursLWEmpty1.Jan / nrow(freqLabour1Hour[1:744,]) * 100
 	hoursLWEmpty2.Jan <- colSums(freqLabour2Hour[1:744, 2:ncol(freqLabour2Hour)]==0)
 	percentTimeLWEmpty2.Jan <- hoursLWEmpty2.Jan / nrow(freqLabour2Hour[1:744,]) * 100
-
-	# append results to lists
-	emptyLW1.Jan.ll[[i]] <- percentTimeLWEmpty1.Jan
-	emptyLW2.Jan.ll[[i]] <- percentTimeLWEmpty2.Jan
 	
 	# DETERMINE HOW MUCH OF THE TIME LABOUR ROOMS ARE EMPTY
 	hoursLWEmpty1.Nov <- colSums(freqLabour1Hour[7297:8016, 2:ncol(freqLabour1Hour)]==0)
@@ -1058,19 +1088,60 @@ for(i in 1:n)
 	hoursLWEmpty2.Nov <- colSums(freqLabour2Hour[7297:8016, 2:ncol(freqLabour2Hour)]==0)
 	percentTimeLWEmpty2.Nov <- hoursLWEmpty2.Nov / nrow(freqLabour2Hour[7297:8016,]) * 100
 
-	# append results to lists
-	emptyLW1.Nov.ll[[i]] <- percentTimeLWEmpty1.Nov
-	emptyLW2.Nov.ll[[i]] <- percentTimeLWEmpty2.Nov
+
+	res <- list(percentTimeLWEmpty1.Jan=percentTimeLWEmpty1.Jan, percentTimeLWEmpty2.Jan=percentTimeLWEmpty2.Jan,
+			percentTimeLWEmpty1.Nov=percentTimeLWEmpty1.Nov, percentTimeLWEmpty2.Nov=percentTimeLWEmpty2.Nov)
+
+	return(res)
+
+	})
 	
 }
 
+
+start <- proc.time()
+
+# set up cluster
+cl <- makeCluster(8)
+registerDoParallel(cl)
+registerDoRNG(seed=seed)
+
+# call parallel for loop
+foreachMinMax <- foreach(i=1:n, .packages=c("lubridate")) %dorng% calcFacStatsMinMax(params, FT)
+#resMinMax <- calcFacStatsMinMax(params,FT)
+
+# end cluster
+stopImplicitCluster()
+
 end <- proc.time() - start
 print(end)
+
+
+emptyLW1.Jan.ll <- list()
+emptyLW1.Nov.ll <- list()
+emptyLW2.Jan.ll <- list()
+emptyLW2.Nov.ll <- list()
+
+for(i in 1:length(foreachMinMax))
+{
+	# append results to lists
+	emptyLW1.Jan.ll[[i]] <- foreachMinMax[[i]]$percentTimeLWEmpty1.Jan
+	emptyLW2.Jan.ll[[i]] <- foreachMinMax[[i]]$percentTimeLWEmpty2.Jan
+	# append results to lists
+	emptyLW1.Nov.ll[[i]] <- foreachMinMax[[i]]$percentTimeLWEmpty1.Nov
+	emptyLW2.Nov.ll[[i]] <- foreachMinMax[[i]]$percentTimeLWEmpty2.Nov
+}
+
 
 df.empty1.Jan <- as.data.frame(do.call(rbind, emptyLW1.Jan.ll))
 df.empty2.Jan <- as.data.frame(do.call(rbind, emptyLW2.Jan.ll))
 df.empty1.Nov <- as.data.frame(do.call(rbind, emptyLW1.Nov.ll))
 df.empty2.Nov <- as.data.frame(do.call(rbind, emptyLW2.Nov.ll))
+
+#write.csv(x=df.empty1.Jan, file="WHO_seasonal_S1_pctJanEmptyLW.csv", row.names=FALSE)
+#write.csv(x=df.empty2.Jan, file="WHO_seasonal_S2_pctJanEmptyLW.csv", row.names=FALSE)
+#write.csv(x=df.empty1.Nov, file="WHO_seasonal_S1_pctNovEmptyLW.csv", row.names=FALSE)
+#write.csv(x=df.empty2.Nov, file="WHO_seasonal_S2_pctNovEmptyLW.csv", row.names=FALSE)
 
 
 df.empty1.Jan.long <- gather(df.empty1.Jan, Facility, PctTimeLWEmpty, count1:count3, factor_key=TRUE)
@@ -1090,8 +1161,8 @@ p10max <- ggplot(df.empty2.Jan.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text=element_text(size=14), axis.text.x=element_text(angle=45, hjust=1, vjust=1))
 print(p10max)
 
-pic.max <- plot_grid(p9max, p10max, labels=c('a', 'b'), label_size=20, nrow=1)
-save_plot(filename="Fig2_WHO_emptyLWJan_season.png", plot=pic.max, base_height=5, base_width=10, dpi=300)
+pic.max <- plot_grid(p9max, p10max, labels=c('A', 'B'), label_size=20, nrow=1)
+#save_plot(filename="Fig2_WHO_emptyLWJan_season_CEmOC.png", plot=pic.max, base_height=5, base_width=10, dpi=300)
 
 
 df.empty1.Nov.long <- gather(df.empty1.Nov, Facility, PctTimeLWEmpty, count1:count3, factor_key=TRUE)
@@ -1112,8 +1183,8 @@ p10min <- ggplot(df.empty2.Nov.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_
 print(p10min)
 
 
-pic.min <- plot_grid(p9min, p10min, labels=c('a', 'b'), label_size=20, nrow=1)
-save_plot(filename="Fig2_WHO_emptyLWNov_season.png", plot=pic.min, base_height=5, base_width=10, dpi=300)
+pic.min <- plot_grid(p9min, p10min, labels=c('A', 'B'), label_size=20, nrow=1)
+#save_plot(filename="Fig2_WHO_emptyLWNov_season_CEmOC.png", plot=pic.min, base_height=5, base_width=10, dpi=300)
 
 
 

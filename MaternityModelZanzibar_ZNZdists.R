@@ -2,9 +2,6 @@
 # BECKY BAGGALEY, SEPTEMBER 2020, LENGTH OF STAY MODEL - ZANZIBAR
 # CODE TO DETERMINE DELIVERY ROOM AND MATERNITY WARD OCCUPANCY
 # IN ZANZIBAR (USING ZANZIBAR-SPECIFIC MATERNITY WARD DATA) 
-# AND IN SUB-SAHARAN AFRICA IN GENERAL USING WHO DATA
-# EDITS BY CAROLIN VEGVARI 19/10/2020
-# EDITS AND REFACTORING BY CAROLIN VEGVARI 16/05/2022
 # USE LOS DISTRIBUTIONS FITTED TO LATEST TANZNIA DHS DATA -
 # ZANZIBAR DATA ONLY
 # github: https://github.com/kl3mn9/maternity-model
@@ -14,35 +11,33 @@
 rm(list=ls())
 closeAllConnections()
 
-library(lubridate)	# for handling times and dates
+library(lubridate)		# for handling times and dates
 library(ggplot2)		# for plotting
-library(tidyr)		# for data formating
+library(tidyr)			# for data formating
 library(cowplot)		# for composite plots
 library(foreach)		# for parallel for loops
-library(doParallel)	# for parallel for loops
-library(doRNG)		# for parallel for loops with random number seed
+library(doParallel)		# for parallel for loops
+library(doRNG)			# for parallel for loops with random number seed
 
-# set working directory
-setwd("C:\\Users\\Carolin\\Oriole Global Health\\OGH Team - Documents\\02. Business Development\\03. Business Outreach\\MaternityModel\\ZanzibarMaternity\\")
 
 seed <- 42
 set.seed(seed)		# for reproducibility
 
 ######################
-###Model parameters###		# CV: consider moving to parameter file to make script file general to any country
+###Model parameters###		
 ######################
 timeZone 		<- "Africa/Dar_es_Salaam"
-prob_comp		<- 0.15	# % deliveries with complications
-min_labour		<- 0.25	# minimum duration in labour ward (hours)
+prob_comp		<- 0.15		# % deliveries with complications
+min_labour		<- 0.25		# minimum duration in labour ward (hours)
 min_postp		<- 2		# minimum duration in postpartum ward (hours)
-factor_dur_comp	<- 1.5	# factor increase in duration in labour ward if delivery is complicated
+factor_dur_comp	<- 1.5		# factor increase in duration in labour ward if delivery is complicated
 
 ###LENGTHS OF STAY PARAMETERS###
 ### For Zanzibar - Tanzania DHS - Zanzibar data only###
 shapePPUZ <- 1.114		# shape parameter, uncomplicated
 scalePPUZ <- 12.08		# scale parameter, uncomplicated
 shapePPCZ <- 2.023		# shape parameter, complicated
-scalePPCZ <- 57.8			# scale parameter, complicated
+scalePPCZ <- 57.8		# scale parameter, complicated
 
 ###DELIVERY ROOM###
 ###Lack of data, so same for WHO and Zanzibar###
@@ -51,18 +46,17 @@ scaleDelU <- 1.23 		# scale parameter, uncomplicated
 
 ###Read in Zanzibar facilities data###
 # contains data on births in 37 facilities in Zanzibar
+# dataset can be made available upon request
 data <- read.table("Zanzibar facility dataset.csv", header=T, sep=",", fill=TRUE)
 
 df.fac <- data[!(data$no_delivs==0),] 						# deleting facilities 30 and 32 because there are zero deliveries in the dataset
 df.fac <- df.fac[order(df.fac$csects, decreasing=TRUE), ]	# order facilities according to number of c-sections
 row.names(df.fac) <- 1:nrow(df.fac)
 
-#births <- 12*sum(data$no_delivs)			# estimated no. births per year in facilities in Zanzibar
 births <- 48763						# births in Zanzibar in 2013, source: knoema
 
-# Calculate probability of complicated births based on data
-#prob_comp <- sum(df.fac$csects) / sum(df.fac$no_delivs)		# % c-sections in Zanzibar data
-prob_comp <- 0.15 										# % deliveries with complications, assumed in World Health Report
+# Probability of complicated births based on data
+prob_comp <- 0.15 		# % deliveries with complications, assumed in World Health Report
 
 # CALCULATE PROBABILITIES FOR EACH FACILITY
 probs_fac_comp <- df.fac$no_delivs[df.fac$csects > 0] / sum(df.fac$no_delivs[df.fac$csects > 0])
@@ -77,14 +71,11 @@ params <- list(timeZone=timeZone, prob_comp=prob_comp, min_labour=min_labour, mi
 		shapeDelU=shapeDelU, scaleDelU=scaleDelU)
 
 
-
 ###########################################################################
 # convenience functions
 ###########################################################################
 
-#Random date and time function taken from stackoverflow
-#http://stackoverflow.com/questions/14720983/efficiently-generate-a-random-sample-of-times-and-dates-between-two-dates
-
+#Random date and time function 
 latemail <- function(N, st="2013/01/01", et="2013/12/31") 
 {
 	st <- as.POSIXct(as.Date(st))
@@ -181,7 +172,6 @@ getOccupancyByCentreSnapshot2 <- function(start, finish, breaks, facility, facil
 }
 
 
-
 #########################################
 ###START OF SIMULATION###################
 #########################################
@@ -195,9 +185,9 @@ durPPCZ <- rgamma(n=births,shape=shapePPCZ,scale=scalePPCZ)					# duration postp
 
 
 temp3 <- latemail(births)				# each woman set a random date and time of presentation in labour at a health facility
-								# the vector orders them by date (for one year - 2013)
+										# the vector orders them by date (for one year - 2013)
 tz(temp3) <- timeZone					# set time zone, e.g. to East African Time (for Zanzibar)
-labour_start <- temp3[sample(births)]		# labour_start dates and times in random order (means date/time of admission to labour ward)
+labour_start <- temp3[sample(births)]	# labour_start dates and times in random order (means date/time of admission to labour ward)
 
 complicatedZ <- rbinom(births, 1, prob_comp)	# assign whether each woman has a complicated delivery: 1= complicated 0= uncomplicated
 
@@ -211,9 +201,9 @@ dur_labour <- rep(0,births)
 
 dur_labour[complicatedZ==1] <- durDelComp[complicatedZ==1]		# duration in labour ward dependant on whether delivery is complicated
 dur_labour[complicatedZ==0] <- durDelUncomp[complicatedZ==0]	# or uncomplicated
-dur_labour[dur_labour<min_labour] <- min_labour				# and must be minimum of min_labour
+dur_labour[dur_labour<min_labour] <- min_labour					# and must be minimum of min_labour
 
-labour_end <- labour_start + dur_labour*60*60				#date and time that delivery ends (dur_labour in hours converted into seconds)
+labour_end <- labour_start + dur_labour*60*60					#date and time that delivery ends (dur_labour in hours converted into seconds)
 
 
 ####################################
@@ -244,7 +234,7 @@ facility[complicatedZ==0] <- sample(1:nrow(df.fac), size=length(facility[complic
 
 
 #################################################################################################################################
-# OCCUPANCY AT SNAPSHOTS IN TIME (4:00, 12:00, 20:00)
+# OCCUPANCY AT SNAPSHOTS IN TIME (4:00, 12:00, 18:00)
 #################################################################################################################################
 
 # times to generate 'snapshots', 
@@ -307,7 +297,6 @@ p1 <- ggplot(df.total.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) 
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p1)
-#ggsave("TotalBirthsMonthSingle_ZNZ.png", plot=p1, dpi=300, width=12, height=8)
 
 
 # Plot number of births and complicated births over a representative month by facility (snapshots, facility occupancy)
@@ -329,7 +318,6 @@ p2 <- ggplot(df.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + 
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p2)
-#ggsave("BirthsFacilityMonthSingle_ZNZ.png", plot=p2, dpi=300, width=18, height=18)
 
 
 # WOMEN IN DELIVERY ROOMS
@@ -345,7 +333,6 @@ p3 <- ggplot(df.del.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + 
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in delivery rooms") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p3)
-#ggsave("TotalDelMonthSingle_ZNZ.png", plot=p3, dpi=300, width=12, height=8)
 
 
 # Plot number of births and complicated births over a representative month by facility (snapshots, facility occupancy)
@@ -367,7 +354,6 @@ p4 <- ggplot(df.del.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in delivery rooms") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p4)
-ggsave("DelFacilityMonthSingle_ZNZ.pdf", plot=p4, dpi=300, width=18, height=18)
 
 
 # WOMEN IN MATERNITY BEDS (POST-PARTUM)
@@ -383,7 +369,6 @@ p5 <- ggplot(df.mat.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + 
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in post-partum beds") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p5)
-#ggsave("TotalMatMonthSingle_ZNZ.png", plot=p5, dpi=300, width=12, height=8)
 
 
 # Plot number of births and complicated births over a representative month by facility (snapshots, facility occupancy)
@@ -405,7 +390,6 @@ p6 <- ggplot(df.mat.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in post-partum beds") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p6)
-#ggsave("MatFacilityMonthSingle_ZNZ.png", plot=p6, dpi=300, width=18, height=18)
 
 
 
@@ -452,12 +436,12 @@ calcFacStats <- function(params, FT, breaks)
 	# for births=annual births in Zanzibar
 	durDelUncomp <- rgamma(n=births,shape=shapeDelU,scale=scaleDelU)				#duration in delivery room, uncomplicated delivery
 	durDelComp <- factor_dur_comp*rgamma(n=births,shape=shapeDelU,scale=scaleDelU)	#duration in delivery room, complicated delivery
-	durPPUZ <- rgamma(n=births,shape=shapePPUZ,scale=scalePPUZ)					#duration postpartum, uncomplicated delivery, Zanzibar analysis
-	durPPCZ <- rgamma(n=births,shape=shapePPCZ,scale=scalePPCZ)					#duration postpartum, complicated delivery, Zanzibar analysis
+	durPPUZ <- rgamma(n=births,shape=shapePPUZ,scale=scalePPUZ)						#duration postpartum, uncomplicated delivery, Zanzibar analysis
+	durPPCZ <- rgamma(n=births,shape=shapePPCZ,scale=scalePPCZ)					#	duration postpartum, complicated delivery, Zanzibar analysis
 
 	temp3 <- FT$latemail(births)			#each woman set a random date and time of presentation in labour at a health facility
-								#the vector orders them by date (for one year - 2013)
-	tz(temp3) <- timeZone				# set time zone, e.g. to East African Time (for Zanzibar)
+											#the vector orders them by date (for one year - 2013)
+	tz(temp3) <- timeZone					# set time zone, e.g. to East African Time (for Zanzibar)
 	labour_start <- temp3[sample(births)]	#labour_start dates and times in random order (means date/time of admission to labour ward)
 
 	complicatedZ <- rbinom(births, 1, prob_comp)	# assign whether each woman has a complicated delivery: 1= complicated 0= uncomplicated
@@ -475,8 +459,8 @@ calcFacStats <- function(params, FT, breaks)
 	dur_labour <- rep(0,births)			
 	dur_labour[complicatedZ==1] <- durDelComp[complicatedZ==1]		# duration in labour ward dependant on whether delivery is complicated
 	dur_labour[complicatedZ==0] <- durDelUncomp[complicatedZ==0]	# or uncomplicated
-	dur_labour[dur_labour<min_labour] <- min_labour				# and must be minimum of min_labour
-	labour_end <- labour_start + dur_labour*60*60				# date and time that delivery ends (dur_labour in hours converted into seconds)
+	dur_labour[dur_labour<min_labour] <- min_labour					# and must be minimum of min_labour
+	labour_end <- labour_start + dur_labour*60*60					# date and time that delivery ends (dur_labour in hours converted into seconds)
 
 	
 	facility.numbers <- 1:nrow(df.fac)
@@ -529,7 +513,6 @@ registerDoRNG(seed=seed)
 
 # call parallel for loop
 foreachResults <- foreach(i=1:n, .packages=c("lubridate")) %dorng% calcFacStats(params, FT, breaks)
-#res <- calcFacStats(params,FT, breaks)
 
 # end cluster
 stopImplicitCluster()
@@ -561,20 +544,20 @@ df.overSBA <- as.data.frame(do.call(rbind, overSBA.ll))
 df.overSBA4 <- as.data.frame(do.call(rbind, overSBA4.ll))
 
 # save output data
-#write.csv(x=df.overLW, file="pctTimeExceedLWCapacity_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.emptyLW, file="pctTimeEmptyLW_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.overSBA, file="pctTimeExceedSBACapacity_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.overSBA4, file="pctTimeExceedSBA4Capacity_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overLW, file="pctTimeExceedLWCapacity_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.emptyLW, file="pctTimeEmptyLW_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overSBA, file="pctTimeExceedSBACapacity_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overSBA4, file="pctTimeExceedSBA4Capacity_ZNZ.csv", row.names=FALSE)
 
 
 #################################################################################################################################
 # PLOT PERCENT OF TIME DURING WHICH FACILITIES EXCEED CAPACITY OR ARE EMPTY
 #################################################################################################################################
 
-df.overLW <- read.csv("ZanzibarScenario_ZNZ_DHS\\1000iter\\pctTimeExceedLWCapacity_ZNZ.csv")
-df.emptyLW <- read.csv("ZanzibarScenario_ZNZ_DHS\\1000iter\\pctTimeEmptyLW_ZNZ.csv")
-df.overSBA <- read.csv("ZanzibarScenario_ZNZ_DHS\\1000iter\\pctTimeExceedSBACapacity_ZNZ.csv")
-df.overSBA4 <- read.csv("ZanzibarScenario_ZNZ_DHS\\1000iter\\pctTimeExceedSBA4Capacity_ZNZ.csv")
+#df.overLW <- read.csv("ZanzibarScenario_ZNZ_DHS\\1000iter\\pctTimeExceedLWCapacity_ZNZ.csv")
+#df.emptyLW <- read.csv("ZanzibarScenario_ZNZ_DHS\\1000iter\\pctTimeEmptyLW_ZNZ.csv")
+#df.overSBA <- read.csv("ZanzibarScenario_ZNZ_DHS\\1000iter\\pctTimeExceedSBACapacity_ZNZ.csv")
+#df.overSBA4 <- read.csv("ZanzibarScenario_ZNZ_DHS\\1000iter\\pctTimeExceedSBA4Capacity_ZNZ.csv")
 
 df.overLW.long <- gather(df.overLW, Facility, PctTimeOverLWCapacity, count1:count35, factor_key=TRUE)
 levels(df.overLW.long$Facility) <- paste("Facility", seq(1, 35))
@@ -586,7 +569,7 @@ p7 <- ggplot(df.overLW.long, aes(x=Facility, y=PctTimeOverLWCapacity, fill=Type)
 	scale_fill_manual(values=c("lightgrey", "grey27")) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_blank(), legend.position=c(0.8, 0.8), legend.title=element_blank(), legend.text=element_text(size=14), plot.margin=margin(0, 0, 0, 1, "cm"))
 print(p7)
-#ggsave("bedCapacityExceeded100_ZNZ.png", plot=p7, dpi=300, width=18, height=9)
+
 
 df.emptyLW.long <- gather(df.emptyLW, Facility, PctTimeLWEmpty, count1:count35, factor_key=TRUE)
 levels(df.emptyLW.long$Facility) <- paste("Facility", seq(1, 35))
@@ -598,7 +581,6 @@ p8 <- ggplot(df.emptyLW.long, aes(x=Facility, y=PctTimeLWEmpty, fill=Type)) + th
 	scale_fill_manual(values=c("lightgrey", "grey27")) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_blank(), legend.position="none",  plot.margin=margin(0, 0, 0, 1, "cm"))
 print(p8)
-#ggsave("emptyLW100_ZNZ.png", plot=p8, dpi=300, width=18, height=9)
 
 
 df.overSBA.long <- gather(df.overSBA, Facility, PctTimeOverSBACapacity, count1:count35, factor_key=TRUE)
@@ -611,10 +593,10 @@ p9 <- ggplot(df.overSBA.long, aes(x=Facility, y=PctTimeOverSBACapacity, fill=Typ
 	scale_fill_manual(values=c("lightgrey", "grey27")) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1), legend.position="none", plot.margin=margin(0, 0, 0, 1, "cm"))
 print(p9)
-#ggsave("SBACapacityExceeded_ZNZ.png", plot=p9, dpi=300, width=18, height=9)
 
-pic <- plot_grid(p7, p8, p9, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
-#save_plot(filename="capacityLW_ZNZ.png", plot=pic, base_height=16, base_width=12, dpi=300)
+
+pic1 <- plot_grid(p7, p8, p9, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
+save_plot(filename="capacityLW_ZNZ.pdf", plot=pic1, base_height=16, base_width=12, dpi=300)
 
 
 df.overSBA4.long <- gather(df.overSBA4, Facility, PctTimeOverSBACapacity, count1:count35, factor_key=TRUE)
@@ -628,8 +610,8 @@ p9alt <- ggplot(df.overSBA4.long, aes(x=Facility, y=PctTimeOverSBACapacity, fill
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1), legend.position="none", plot.margin=margin(0, 0, 0, 1, "cm"))
 print(p9alt)
 
-pic <- plot_grid(p7, p8, p9alt, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
-#save_plot(filename="capacityLWSBA4_ZNZ.png", plot=pic, base_height=16, base_width=12, dpi=300)
+pic2 <- plot_grid(p7, p8, p9alt, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
+save_plot(filename="capacityLWSBA4_ZNZ.png", plot=pic2, base_height=16, base_width=12, dpi=300)
 
 
 #################################################################################################################################
@@ -688,7 +670,6 @@ p10 <- ggplot(df.birthsPerSBA, aes(x=Facility, y=BirthsPerSBA, fill=Type)) + the
 	scale_fill_manual(values=c("lightgrey", "grey27")) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1), legend.title=element_blank(), legend.text=element_text(size=12))
 print(p10)
-#ggsave("birthsPerSBA_ZNZ.png", plot=p10, dpi=300, width=12, height=6)
 
 
 df.birthsPerSBA$Type <- factor(df.birthsPerSBA$Type, levels=c("CEmOC", "BEmOC"))
@@ -698,13 +679,10 @@ p11 <- ggplot(df.birthsPerSBA, aes(x=Type, y=BirthsPerSBA, fill=Type)) + theme_c
 	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + 
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=16), axis.text=element_text(size=16), legend.position="none")
 print(p11)
-#ggsave("birthsPerSBASummary_ZNZ.png", plot=p11, dpi=300, width=9, height=9)
 
 
-pic <- plot_grid(p7sum, p8sum, p9sum, p11, labels=c('a', 'b', 'c', 'd'), label_size=18, nrow=2)
-#save_plot(filename="capacityLWsum_ZNZ.png", plot=pic, base_height=12, base_width=12, dpi=300)
+pic3 <- plot_grid(p7sum, p8sum, p9sum, p11, labels=c('a', 'b', 'c', 'd'), label_size=18, nrow=2)
+save_plot(filename="capacityLWsum_ZNZ.png", plot=pic3, base_height=12, base_width=12, dpi=300)
 
-pic <- plot_grid(p7sum, p8sum, p9sumalt, p11, labels=c('a', 'b', 'c', 'd'), label_size=18, nrow=2)
-#save_plot(filename="capacityLWSBA4sum_ZNZ.png", plot=pic, base_height=12, base_width=12, dpi=300)
-
-
+pic4 <- plot_grid(p7sum, p8sum, p9sumalt, p11, labels=c('a', 'b', 'c', 'd'), label_size=18, nrow=2)
+save_plot(filename="capacityLWSBA4sum_ZNZ.png", plot=pic4, base_height=12, base_width=12, dpi=300)

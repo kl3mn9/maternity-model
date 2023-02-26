@@ -1,15 +1,12 @@
-###################################################################
+###############################################################################
 # BECKY BAGGALEY, SEPTEMBER 2020, LENGTH OF STAY MODEL - ZANZIBAR
 # CODE TO DETERMINE DELIVERY ROOM AND MATERNITY WARD OCCUPANCY
 # IN ZANZIBAR (USING ZANZIBAR-SPECIFIC MATERNITY WARD DATA) 
 # AND IN SUB-SAHARAN AFRICA IN GENERAL USING WHO DATA
-# EDITS AND REFACTORING BY CAROLIN VEGVARI 16/05/2022
-# EDITS BY CAROLIN VEGVARI 07/11/2020
 # USE LOS DISTRIBUTIONS FITTED TO LATEST TANZANIA DHS DATA - ZANZIBAR ONLY
 # USE DATA ON SEASONALITY OF BIRTHS IN ZANZIBAR FROM TANZANIA DHS
-# ADD FUNCTION TO SIMULATE SEASONAL BIRTH DATA 09/11/2022
 # github: https://github.com/kl3mn9/maternity-model
-###################################################################
+###############################################################################
 
 
 rm(list=ls())
@@ -23,20 +20,17 @@ library(foreach)		# for parallel for loops
 library(doParallel)	# for parallel for loops
 library(doRNG)		# for parallel for loops with random number seed
 
-# set working directory
-setwd("C:\\Users\\Carolin\\Oriole Global Health\\OGH Team - Documents\\02. Business Development\\03. Business Outreach\\MaternityModel\\ZanzibarMaternity\\")
-
 seed <- 42
 set.seed(seed)		#for reproducibility
 
 ######################
-###Model parameters###		# CV: consider moving to parameter file to make script file general to any country
+###Model parameters###		
 ######################
 timeZone 		<- "Africa/Dar_es_Salaam"
-prob_comp		<- 0.15	# % deliveries with complications
-min_labour		<- 0.25	# minimum duration in labour ward (hours)
+prob_comp		<- 0.15		# % deliveries with complications
+min_labour		<- 0.25		# minimum duration in labour ward (hours)
 min_postp		<- 2		# minimum duration in postpartum ward (hours)
-factor_dur_comp	<- 1.5	# factor increase in duration in labour ward if delivery is complicated
+factor_dur_comp	<- 1.5		# factor increase in duration in labour ward if delivery is complicated
 
 ###LENGTHS OF STAY PARAMETERS###
 ###POST PARTUM###
@@ -44,7 +38,7 @@ factor_dur_comp	<- 1.5	# factor increase in duration in labour ward if delivery 
 shapePPUZ <- 1.114		#shape parameter, uncomplicated
 scalePPUZ <- 12.08		#scale parameter, uncomplicated
 shapePPCZ <- 2.023		#shape parameter, complicated
-scalePPCZ <- 57.8			#scale parameter, complicated
+scalePPCZ <- 57.8		#scale parameter, complicated
 
 ###DELIVERY ROOM###
 ###Lack of data, so same for WHO and Zanzibar###
@@ -53,18 +47,17 @@ scaleDelU <- 1.23 		#scale parameter, uncomplicated
 
 ###Read in Zanzibar facilities data###
 # contains data on births in 37 facilities in Zanzibar
+# dataset can be made available upon request
 data <- read.table("Zanzibar facility dataset.csv", header=T, sep=",", fill=TRUE)
 
 df.fac <- data[!(data$no_delivs==0),] 						# deleting facilities 30 and 32 because there are zero deliveries in the dataset
 df.fac <- df.fac[order(df.fac$csects, decreasing=TRUE), ]	# order facilities according to number of c-sections
 row.names(df.fac) <- 1:nrow(df.fac)
 
-#births <- 12*sum(data$no_delivs)			# estimated no. births per year in facilities in Zanzibar
-births <- 48763						# births in Zanzibar in 2013, source: knoema
+births <- 48763			# births in Zanzibar in 2013, source: knoema
 
-# Calculate probability of complicated births based on data
-#prob_comp <- sum(df.fac$csects) / sum(df.fac$no_delivs)		# % c-sections in Zanzibar data
-prob_comp <- 0.15 										# % deliveries with complications, assumed in World Health Report
+# Probability of complicated births
+prob_comp <- 0.15 		# % deliveries with complications, assumed in World Health Report
 
 # CALCULATE PROBABILITIES FOR EACH FACILITY
 probs_fac_comp <- df.fac$no_delivs[df.fac$csects > 0] / sum(df.fac$no_delivs[df.fac$csects > 0])
@@ -87,9 +80,7 @@ params <- list(timeZone=timeZone, prob_comp=prob_comp, min_labour=min_labour, mi
 # convenience functions
 ###########################################################################
 
-#Random date and time function taken from stackoverflow
-#http://stackoverflow.com/questions/14720983/efficiently-generate-a-random-sample-of-times-and-dates-between-two-dates
-
+#Random date and time function 
 latemail <- function(N, st="2013/01/01", et="2013/12/31") {
 	st <- as.POSIXct(as.Date(st))
       et <- as.POSIXct(as.Date(et))
@@ -221,7 +212,7 @@ durPPCZ <- rgamma(n=births,shape=shapePPCZ,scale=scalePPCZ)					# duration postp
 
 
 labour_start <- getDT(N=births, weights=weights)	#each woman set a random date and time of presentation in labour at a health facility
-tz(labour_start) <- timeZone					# set time zone, e.g. to East African Time (for Zanzibar)	
+tz(labour_start) <- timeZone						# set time zone, e.g. to East African Time (for Zanzibar)	
 
 complicatedZ <- rbinom(births, 1, prob_comp)		# assign whether each woman has a complicated delivery: 1= complicated 0= uncomplicated
 
@@ -235,9 +226,9 @@ dur_labour <- rep(0,births)
 
 dur_labour[complicatedZ==1] <- durDelComp[complicatedZ==1]		# duration in labour ward dependant on whether delivery is complicated
 dur_labour[complicatedZ==0] <- durDelUncomp[complicatedZ==0]	# or uncomplicated
-dur_labour[dur_labour<min_labour] <- min_labour				# and must be minimum of min_labour
+dur_labour[dur_labour<min_labour] <- min_labour					# and must be minimum of min_labour
 
-labour_end <- labour_start + dur_labour*60*60				#date and time that delivery ends (dur_labour in hours converted into seconds)
+labour_end <- labour_start + dur_labour*60*60					# date and time that delivery ends (dur_labour in hours converted into seconds)
 
 
 ####################################
@@ -268,7 +259,7 @@ facility[complicatedZ==0] <- sample(1:nrow(df.fac), size=length(facility[complic
 
 
 #################################################################################################################################
-# OCCUPANCY AT SNAPSHOTS IN TIME (4:00, 12:00, 20:00)
+# OCCUPANCY AT SNAPSHOTS IN TIME (4:00, 12:00, 18:00)
 #################################################################################################################################
 
 # times to generate 'snapshots', 
@@ -332,7 +323,6 @@ p1 <- ggplot(df.total.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) 
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in EmOCs") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p1)
-#ggsave("TotalBirthsYear_ZNZ.png", plot=p1, dpi=300, width=12, height=8)
 
 
 p1a <- ggplot(df.total.snaps.long.Mar, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
@@ -340,7 +330,6 @@ p1a <- ggplot(df.total.snaps.long.Mar, aes(x=Snapshot, y=NumBirths, fill=BirthTy
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p1a)
-#ggsave("TotalBirthsMarch_ZNZ.png", plot=p1a, dpi=300, width=12, height=8)
 
 
 # Plot number of births and complicated births over a year by facility (snapshots, facility occupancy)
@@ -362,7 +351,6 @@ p2 <- ggplot(df.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + 
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in EmOCs") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p2)
-#ggsave("BirthsFacilityYear_ZNZ.png", plot=p2, dpi=300, width=18, height=18)
 
 
 # Plot number of births and complicated births over a representative month (March) by facility (snapshots, facility occupancy)
@@ -384,8 +372,6 @@ p2a <- ggplot(df.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) +
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in EmOCs") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p2a)
-#ggsave("BirthsFacilityMarch_ZNZ.png", plot=p2a, dpi=300, width=18, height=18)
-
 
 
 # WOMEN IN DELIVERY ROOMS
@@ -402,7 +388,6 @@ p3 <- ggplot(df.del.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + 
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in delivery rooms") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p3)
-ggsave("TotalDelYear_ZNZ.png", plot=p3, dpi=300, width=12, height=8)
 
 
 p3a <- ggplot(df.del.snaps.long.Mar, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
@@ -410,7 +395,6 @@ p3a <- ggplot(df.del.snaps.long.Mar, aes(x=Snapshot, y=NumBirths, fill=BirthType
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in delivery rooms") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p3a)
-ggsave("TotalDelMarch_ZNZ.png", plot=p3a, dpi=300, width=12, height=8)
 
 
 # Plot number of births and complicated births over a year by facility (snapshots, facility occupancy)
@@ -432,7 +416,6 @@ p4 <- ggplot(df.del.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in delivery rooms") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p4)
-#ggsave("DelFacilityYear_ZNZ.png", plot=p4, dpi=300, width=18, height=18)
 
 
 # Plot number of births and complicated births over a representative month (March) by facility (snapshots, facility occupancy)
@@ -454,8 +437,6 @@ p4a <- ggplot(df.del.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in delivery rooms") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p4a)
-ggsave("DelFacilityMarch_ZNZ.png", plot=p4a, dpi=300, width=18, height=18)
-
 
 
 # WOMEN IN MATERNITY BEDS (POST-PARTUM)
@@ -463,8 +444,7 @@ ggsave("DelFacilityMarch_ZNZ.png", plot=p4a, dpi=300, width=18, height=18)
 df.mat.snaps <- data.frame(Snapshot=breaks3, TotalBirths=rowSums(freqMatZ[, 2:ncol(freqMatZ)]), CompBirths=rowSums(freqMatZ_comp[,2:ncol(freqMatZ_comp)]))
 df.mat.snaps$UncompBirths <- df.mat.snaps$TotalBirths - df.mat.snaps$CompBirths
 
-# 178:270 are rownumbers of snapshots in March
-#df.mat.snaps.long <- gather(df.mat.snaps[178:270, -2], BirthType, NumBirths, CompBirths, UncompBirths, factor_key=TRUE)
+
 df.mat.snaps.long <- gather(df.mat.snaps[, -2], BirthType, NumBirths, CompBirths, UncompBirths, factor_key=TRUE)
 
 p5 <- ggplot(df.mat.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + theme_classic() + geom_bar(stat="identity") +
@@ -472,12 +452,9 @@ p5 <- ggplot(df.mat.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) + 
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in post-partum beds") + 
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p5)
-ggsave("TotalMatYear_ZNZ.png", plot=p5, dpi=300, width=12, height=8)
 
 
-# Plot number of births and complicated births over a representative month by facility (snapshots, facility occupancy)
-#freqMatZ.long <- gather(freqMatZ[178:270,], Facility, NumBirths, count1:count35)
-#freqMatZ_comp.long <- gather(freqMatZ_comp[178:270,], Facility, CompBirths, count1:count7)
+# Plot number of births and complicated births over a year by facility (snapshots, facility occupancy)
 freqMatZ.long <- gather(freqMatZ, Facility, NumBirths, count1:count35)
 freqMatZ_comp.long <- gather(freqMatZ_comp, Facility, CompBirths, count1:count7)
 df.mat.fac.snaps <- merge(freqMatZ.long, freqMatZ_comp.long, by=c("Snapshot", "Facility"), all=TRUE)
@@ -496,8 +473,6 @@ p6 <- ggplot(df.mat.fac.snaps.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)
 	xlab("Time - snapshots every 8h over a year") + ylab("Number of women in post-partum beds") + facet_wrap(~ Facility, ncol=5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p6)
-ggsave("MatFacilityYear_ZNZ.png", plot=p6, dpi=300, width=18, height=18)
-
 
 
 #################################################################################################################################
@@ -526,13 +501,11 @@ params$capacitySBA_pm4 <- capacitySBA_pm4
 
 params$df.fac <- df.fac
 
-
 # FUNCTION AND DATA TRANSPORTER FOR PARALLEL CODE
 FT <- list(getDT=match.fun(getDT), getDischargeTime=match.fun(getDischargeTime),  
 	getOccupancyByCentreSnapshot2=match.fun(getOccupancyByCentreSnapshot2))
 
 breaks <- seq(as.POSIXct('2013-03-01 00:00', tz = "GMT"),by = '1 hours', length = 31*24+1)
-
 
 # function to be called in parallel for loop
 calcFacStats <- function(params, FT, breaks)
@@ -616,14 +589,12 @@ registerDoRNG(seed=seed)
 
 # call parallel for loop
 foreachResults <- foreach(i=1:n, .packages=c("lubridate")) %dorng% calcFacStats(params, FT, breaks)
-#res <- calcFacStats(params,FT, breaks)
 
 # end cluster
 stopImplicitCluster()
 
 end <- proc.time() - start
 print(end)
-
 
 overLW.ll <- list()
 emptyLW.ll <- list()
@@ -645,20 +616,20 @@ df.overSBA <- as.data.frame(do.call(rbind, overSBA.ll))
 df.overSBA4 <- as.data.frame(do.call(rbind, overSBA4.ll))
 
 # save output data
-#write.csv(x=df.overLW, file="pctTimeExceedLWCapacity_ZNZseason.csv", row.names=FALSE)
-#write.csv(x=df.emptyLW, file="pctTimeEmptyLW_ZNZseason.csv", row.names=FALSE)
-#write.csv(x=df.overSBA, file="pctTimeExceedSBACapacity_ZNZseason.csv", row.names=FALSE)
-#write.csv(x=df.overSBA4, file="pctTimeExceedSBA4Capacity_ZNZseason.csv", row.names=FALSE)
+write.csv(x=df.overLW, file="pctTimeExceedLWCapacity_ZNZseason.csv", row.names=FALSE)
+write.csv(x=df.emptyLW, file="pctTimeEmptyLW_ZNZseason.csv", row.names=FALSE)
+write.csv(x=df.overSBA, file="pctTimeExceedSBACapacity_ZNZseason.csv", row.names=FALSE)
+write.csv(x=df.overSBA4, file="pctTimeExceedSBA4Capacity_ZNZseason.csv", row.names=FALSE)
 
 
 #################################################################################################################################
 # PLOT PERCENT OF TIME DURING WHICH FACILITIES EXCEED CAPACITY OR ARE EMPTY
 #################################################################################################################################
 
-df.overLW <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedLWCapacity_ZNZseason.csv")
-df.emptyLW <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeEmptyLW_ZNZseason.csv")
-df.overSBA <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBACapacity_ZNZseason.csv")
-df.overSBA4 <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBA4Capacity_ZNZseason.csv")
+#df.overLW <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedLWCapacity_ZNZseason.csv")
+#df.emptyLW <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeEmptyLW_ZNZseason.csv")
+#df.overSBA <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBACapacity_ZNZseason.csv")
+#df.overSBA4 <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBA4Capacity_ZNZseason.csv")
 
 
 df.overLW.long <- gather(df.overLW, Facility, PctTimeOverLWCapacity, count1:count35, factor_key=TRUE)
@@ -671,7 +642,7 @@ p7 <- ggplot(df.overLW.long, aes(x=Facility, y=PctTimeOverLWCapacity, fill=Type)
 	scale_fill_manual(values=c("lightgrey", "grey27")) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_blank(), legend.position=c(0.8, 0.8), legend.title=element_blank(), legend.text=element_text(size=14), plot.margin=margin(0, 0, 0, 1, "cm"))
 print(p7)
-#ggsave("bedCapacityExceeded1_ZNZseason.png", plot=p7, dpi=300, width=18, height=9)
+
 
 df.emptyLW.long <- gather(df.emptyLW, Facility, PctTimeLWEmpty, count1:count35, factor_key=TRUE)
 levels(df.emptyLW.long$Facility) <- paste("Facility", seq(1, 35))
@@ -683,7 +654,6 @@ p8 <- ggplot(df.emptyLW.long, aes(x=Facility, y=PctTimeLWEmpty, fill=Type)) + th
 	scale_fill_manual(values=c("lightgrey", "grey27")) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_blank(), legend.position="none", plot.margin=margin(0, 0, 0, 1, "cm"))
 print(p8)
-#ggsave("emptyLW100_ZNZseason.png", plot=p8, dpi=300, width=18, height=9)
 
 
 df.overSBA.long <- gather(df.overSBA, Facility, PctTimeOverSBACapacity, count1:count35, factor_key=TRUE)
@@ -696,10 +666,10 @@ p9 <- ggplot(df.overSBA.long, aes(x=Facility, y=PctTimeOverSBACapacity, fill=Typ
 	scale_fill_manual(values=c("lightgrey", "grey27")) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1), legend.position="none", plot.margin=margin(0, 0, 0, 1, "cm"))
 print(p9)
-#ggsave("SBACapacityExceeded100_ZNZseason.png", plot=p9, dpi=300, width=18, height=9)
 
-pic <- plot_grid(p7, p8, p9, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
-#save_plot(filename="capacityLW_ZNZseason.png", plot=pic, base_height=16, base_width=12, dpi=300)
+
+pic1 <- plot_grid(p7, p8, p9, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
+save_plot(filename="capacityLW_ZNZseason.pdf", plot=pic1, base_height=16, base_width=12, dpi=300)
 
 
 df.overSBA4.long <- gather(df.overSBA4, Facility, PctTimeOverSBACapacity, count1:count35, factor_key=TRUE)
@@ -713,8 +683,8 @@ p9alt <- ggplot(df.overSBA4.long, aes(x=Facility, y=PctTimeOverSBACapacity, fill
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1), legend.position="none", plot.margin=margin(0, 0, 0, 1, "cm"))
 print(p9alt)
 
-pic <- plot_grid(p7, p8, p9alt, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
-#save_plot(filename="capacityLWSBA4_ZNZseason.png", plot=pic, base_height=16, base_width=12, dpi=300)
+pic2 <- plot_grid(p7, p8, p9alt, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
+save_plot(filename="capacityLWSBA4_ZNZseason.pdf", plot=pic2, base_height=16, base_width=12, dpi=300)
 
 
 #################################################################################################################################
@@ -767,7 +737,6 @@ p10 <- ggplot(df.birthsPerSBA, aes(x=Facility, y=BirthsPerSBA, fill=Type)) + the
 	scale_fill_manual(values=c("lightgrey", "darkgrey")) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text.y=element_text(size=14), axis.text.x=element_text(size=12, angle=45, hjust=1, vjust=1), legend.title=element_blank(), legend.text=element_text(size=12))
 print(p10)
-#ggsave("birthsPerSBA_ZNZseason.png", plot=p10, dpi=300, width=18, height=9)
 
 
 p11 <- ggplot(df.birthsPerSBA, aes(x=Type, y=BirthsPerSBA, fill=Type)) + theme_classic() + geom_boxplot(colour="black") +
@@ -775,14 +744,13 @@ p11 <- ggplot(df.birthsPerSBA, aes(x=Type, y=BirthsPerSBA, fill=Type)) + theme_c
 	geom_hline(yintercept=birthsRequired, colour="red", size=1.5) + 
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text=element_text(size=14), legend.position="none")
 print(p11)
-#ggsave("birthsPerSBASummary_ZNZseason.png", plot=p11, dpi=300, width=9, height=9)
 
 
-pic <- plot_grid(p7sum, p8sum, p9sum, p11, labels=c('a', 'b', 'c', 'd'), label_size=16, nrow=2)
-#save_plot(filename="capacityLWsum_ZNZseason.png", plot=pic, base_height=12, base_width=12, dpi=300)
+pic3 <- plot_grid(p7sum, p8sum, p9sum, p11, labels=c('a', 'b', 'c', 'd'), label_size=16, nrow=2)
+save_plot(filename="capacityLWsum_ZNZseason.pdf", plot=pic3, base_height=12, base_width=12, dpi=300)
 
-pic <- plot_grid(p7sum, p8sum, p9sumalt, p11, labels=c('a', 'b', 'c', 'd'), label_size=16, nrow=2)
-#save_plot(filename="capacityLWSBA4sum_ZNZseason.png", plot=pic, base_height=12, base_width=12, dpi=300)
+pic4 <- plot_grid(p7sum, p8sum, p9sumalt, p11, labels=c('a', 'b', 'c', 'd'), label_size=16, nrow=2)
+save_plot(filename="capacityLWSBA4sum_ZNZseason.pdf", plot=pic4, base_height=12, base_width=12, dpi=300)
 
 
 #########################################################################################################
@@ -792,6 +760,7 @@ pic <- plot_grid(p7sum, p8sum, p9sumalt, p11, labels=c('a', 'b', 'c', 'd'), labe
 breaksJan <- seq(as.POSIXct('2013-01-01 00:00', tz = "GMT"),by = '1 hours', length = 31*24+1)
 breaksJun <- seq(as.POSIXct('2013-06-01 00:00', tz = "GMT"),by = '1 hours', length = 30*24+1)
 
+# JANUARY
 start <- proc.time()
 
 # set up cluster
@@ -801,7 +770,6 @@ registerDoRNG(seed=seed)
 
 # call parallel for loop
 foreachResultsJan <- foreach(i=1:n, .packages=c("lubridate")) %dorng% calcFacStats(params, FT, breaksJan)
-#resJan <- calcFacStats(params,FT, breaksJan)
 
 # end cluster
 stopImplicitCluster()
@@ -809,7 +777,7 @@ stopImplicitCluster()
 end <- proc.time() - start
 print(end)
 
-
+# JUNE
 start <- proc.time()
 
 # set up cluster
@@ -819,14 +787,12 @@ registerDoRNG(seed=seed)
 
 # call parallel for loop
 foreachResultsJun <- foreach(i=1:n, .packages=c("lubridate")) %dorng% calcFacStats(params, FT, breaksJun)
-#resJun <- calcFacStats(params,FT, breaksJun)
 
 # end cluster
 stopImplicitCluster()
 
 end <- proc.time() - start
 print(end)
-
 
 
 emptyLW.Jun.ll <- list()
@@ -870,30 +836,30 @@ df.overSBA4.Jun <- as.data.frame(do.call(rbind, overSBA4.Jun.ll))
 df.overSBA4.Jan <- as.data.frame(do.call(rbind, overSBA4.Jan.ll))
 
 # save output data
-#write.csv(x=df.overLW.Jan, file="pctTimeExceedLWCapacityJan_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.empty.Jan, file="pctTimeEmptyLWJan_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.overSBA.Jan, file="pctTimeExceedSBACapacityJan_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.overSBA4.Jan, file="pctTimeExceedSBA4CapacityJan_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overLW.Jan, file="pctTimeExceedLWCapacityJan_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.empty.Jan, file="pctTimeEmptyLWJan_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overSBA.Jan, file="pctTimeExceedSBACapacityJan_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overSBA4.Jan, file="pctTimeExceedSBA4CapacityJan_ZNZ.csv", row.names=FALSE)
 
-#write.csv(x=df.overLW.Jun, file="pctTimeExceedLWCapacityJun_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.empty.Jun, file="pctTimeEmptyLWJun_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.overSBA.Jun, file="pctTimeExceedSBACapacityJun_ZNZ.csv", row.names=FALSE)
-#write.csv(x=df.overSBA4.Jun, file="pctTimeExceedSBA4CapacityJun_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overLW.Jun, file="pctTimeExceedLWCapacityJun_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.empty.Jun, file="pctTimeEmptyLWJun_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overSBA.Jun, file="pctTimeExceedSBACapacityJun_ZNZ.csv", row.names=FALSE)
+write.csv(x=df.overSBA4.Jun, file="pctTimeExceedSBA4CapacityJun_ZNZ.csv", row.names=FALSE)
 
 
 #################################################################################################################################
 # PLOT PERCENT OF TIME DURING WHICH FACILITIES EXCEED CAPACITY OR ARE EMPTY IN JANUARY AND JUNE
 #################################################################################################################################
 
-df.overLW.Jan <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedLWCapacityJan_ZNZ.csv")
-df.empty.Jan <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeEmptyLWJan_ZNZ.csv")
-df.overSBA.Jan <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBACapacityJan_ZNZ.csv")
-df.overSBA4.Jan <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBA4CapacityJan_ZNZ.csv")
+#df.overLW.Jan <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedLWCapacityJan_ZNZ.csv")
+#df.empty.Jan <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeEmptyLWJan_ZNZ.csv")
+#df.overSBA.Jan <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBACapacityJan_ZNZ.csv")
+#df.overSBA4.Jan <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBA4CapacityJan_ZNZ.csv")
 
-df.overLW.Jun <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedLWCapacityJun_ZNZ.csv")
-df.empty.Jun <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeEmptyLWJun_ZNZ.csv")
-df.overSBA.Jun <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBACapacityJun_ZNZ.csv")
-df.overSBA4.Jun <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBA4CapacityJun_ZNZ.csv")
+#df.overLW.Jun <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedLWCapacityJun_ZNZ.csv")
+#df.empty.Jun <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeEmptyLWJun_ZNZ.csv")
+#df.overSBA.Jun <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBACapacityJun_ZNZ.csv")
+#df.overSBA4.Jun <- read.csv("ZanzibarScenario_ZNZ_DHS_Seasonal\\1000iter\\pctTimeExceedSBA4CapacityJun_ZNZ.csv")
 
 
 df.empty.Jun.long <- gather(df.empty.Jun, Facility, PctTimeLWEmpty, count1:count35, factor_key=TRUE)
@@ -969,10 +935,10 @@ print(p13min)
 
 
 pic <- plot_grid(p13max, p11max, p12max, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
-#save_plot(filename="capacityLW_ZNZseason_Jun.png", plot=pic, base_height=16, base_width=12, dpi=300)
+save_plot(filename="capacityLW_ZNZseason_Jun.pdf", plot=pic, base_height=16, base_width=12, dpi=300)
 
 pic <- plot_grid(p13min, p11min, p12min, labels=c('a', 'b', 'c'), label_size=16, nrow=3)
-#save_plot(filename="capacityLW_ZNZseason_Jan.png", plot=pic, base_height=16, base_width=12, dpi=300)
+save_plot(filename="capacityLW_ZNZseason_Jan.pdf", plot=pic, base_height=16, base_width=12, dpi=300)
 
 
 
@@ -1000,11 +966,11 @@ p14min <- ggplot(df.overSBA4.Jan.long, aes(x=Facility, y=PctTimeOverSBACapacity,
 print(p14min)
 
 
-pic <- plot_grid(p13max, p11max, p14max, labels=c('a', 'b', 'c'), nrow=3)
-#save_plot(filename="capacityLW4_ZNZseason_Jun.png", plot=pic, base_height=18, base_width=15, dpi=300)
+pic5 <- plot_grid(p13max, p11max, p14max, labels=c('a', 'b', 'c'), nrow=3)
+save_plot(filename="capacityLW4_ZNZseason_Jun.pdf", plot=pic5, base_height=18, base_width=15, dpi=300)
 
-pic <- plot_grid(p13min, p11min, p14min, labels=c('a', 'b', 'c'), nrow=3)
-#save_plot(filename="capacityLW4_ZNZseason_Jan.png", plot=pic, base_height=18, base_width=15, dpi=300)
+pic6 <- plot_grid(p13min, p11min, p14min, labels=c('a', 'b', 'c'), nrow=3)
+save_plot(filename="capacityLW4_ZNZseason_Jan.pdf", plot=pic6, base_height=18, base_width=15, dpi=300)
 
 
 #################################################################################################################################
@@ -1083,20 +1049,5 @@ p9minsumalt <- ggplot(df.overSBA4.Jan.long, aes(x=Type, y=PctTimeOverSBACapacity
 print(p9minsumalt)
 
 
-pic <- plot_grid(p7maxsum, p8maxsum, p9maxsum, labels=c('a', 'b', 'c'), label_size=16, nrow=1)
-#save_plot(filename="capacityLWsumJun_ZNZseason.png", plot=pic, base_height=6, base_width=12, dpi=300)
-
-pic <- plot_grid(p7minsum, p8minsum, p9minsum, labels=c('a', 'b', 'c'), label_size=16, nrow=1)
-#save_plot(filename="capacityLWsumJan_ZNZseason.png", plot=pic, base_height=6, base_width=12, dpi=300)
-
-pic <- plot_grid(p7maxsum, p8maxsum, p9maxsumalt, labels=c('a', 'b', 'c'), label_size=16, nrow=1)
-#save_plot(filename="capacityLWSBA4sumJun_ZNZseason.png", plot=pic, base_height=6, base_width=12, dpi=300)
-
-pic <- plot_grid(p7minsum, p8minsum, p9minsumalt, labels=c('a', 'b', 'c'), label_size=16, nrow=1)
-#save_plot(filename="capacityLWSBA4sumJan_ZNZseason.png", plot=pic, base_height=6, base_width=12, dpi=300)
-
-
-fig5 <- plot_grid(p7maxsum, p8maxsum, p9maxsum, p7minsum, p8minsum, p9minsum, labels=c('a', 'b', 'c', 'd', 'e', 'f'), label_size=16, nrow=2)
-#save_plot(filename="capacityLWsumJunJan_ZNZseason.png", plot=fig5, base_height=10, base_width=12, dpi=300)
-
-
+pic7 <- plot_grid(p7maxsum, p8maxsum, p9maxsum, p7minsum, p8minsum, p9minsum, labels=c('a', 'b', 'c', 'd', 'e', 'f'), label_size=16, nrow=2)
+save_plot(filename="capacityLWsumJunJan_ZNZseason.png", plot=pic7, base_height=10, base_width=12, dpi=300)

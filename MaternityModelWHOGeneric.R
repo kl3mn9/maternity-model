@@ -1,9 +1,7 @@
 ###################################################################
-# BECKY BAGGALEY, SEPTEMBER 2020, LENGTH OF STAY MODEL - ZANZIBAR
+# BAGGALEY, SEPTEMBER 2020, LENGTH OF STAY MODEL - WHO BENCHMARK
 # CODE TO DETERMINE DELIVERY ROOM AND MATERNITY WARD OCCUPANCY
 # IN TWO GENERIC SCENARIOS FOR SSA BASED ON WHO GUIDELINES
-# EDITS BY CAROLIN VEGVARI 19/10/2020
-# EDITS AND REFACTORING BY CAROLIN VEGVARI 14/06/2022
 # github: https://github.com/kl3mn9/maternity-model
 ###################################################################
 
@@ -11,33 +9,29 @@
 rm(list=ls())
 closeAllConnections()
 
-library(lubridate)	# for handling times and dates
+library(lubridate)		# for handling times and dates
 library(chron)
 library(ggplot2)		# for plotting
-library(tidyr)		# for data formating
+library(tidyr)			# for data formating
 library(cowplot)		# for composite plots
 library(foreach)		# for parallel for loops
-library(doParallel)	# for parallel for loops
-library(doRNG)		# for parallel for loops with random number seed
-
-# set working directory
-setwd("C:\\Users\\Carolin\\Oriole Global Health\\OGH Team - Documents\\02. Business Development\\03. Business Outreach\\MaternityModel\\ZanzibarMaternity\\")
+library(doParallel)		# for parallel for loops
+library(doRNG)			# for parallel for loops with random number seed
 
 seed <- 42
 set.seed(seed)		#for reproducibility
 
-
 ###########################################################################
-# Model parameters		# CV: consider moving to parameter file to make script file general to any country
+# Model parameters		
 ###########################################################################
 timeZone 		<- "Africa/Dar_es_Salaam"
-prob_comp		<- 0.15	# % deliveries with complications
-min_labour		<- 0.25	# minimum duration in labour ward (hours)
+prob_comp		<- 0.15		# % deliveries with complications
+min_labour		<- 0.25		# minimum duration in labour ward (hours)
 min_postp		<- 2		# minimum duration in postpartum ward (hours)
-factor_dur_comp	<- 1.5	# factor increase in duration in labour ward if delivery is complicated
-prob_CEmOC_comp	<- 0.5	# 0.9 - probability delivery in CEmOC, complicated delivery (NB// assumes all other deliveries in BEmOC)
+factor_dur_comp	<- 1.5		# factor increase in duration in labour ward if delivery is complicated
+prob_CEmOC_comp	<- 0.5		# 0.9 - probability delivery in CEmOC, complicated delivery (NB// assumes all other deliveries in BEmOC)
 
-births		<- 3600	# WHO World Health Report example
+births		<- 3600			# WHO World Health Report example
 
 # LENGTHS OF STAY PARAMETERS
 # POST PARTUM
@@ -62,8 +56,7 @@ params <- list(timeZone=timeZone, prob_comp=prob_comp, min_labour=min_labour, mi
 # convenience functions
 ###########################################################################
 
-#Random date and time function taken from stackoverflow
-#http://stackoverflow.com/questions/14720983/efficiently-generate-a-random-sample-of-times-and-dates-between-two-dates
+#Random date and time function 
 latemail <- function(N, st="2014/01/01", et="2014/12/31") 
 {
 	st <- as.POSIXct(as.Date(st))
@@ -211,9 +204,7 @@ discharge1WHO <- labour_end + dur_maternityWHO*60*60	# literal discharge time i.
 # WORLD HEALTH REPORT SCENARIOS 1 AND 2
 # SCENARIO 1: 1 CEmOC with 10 SBAs, 2 BEmOCs with 5 SBAs each
 # SCENARIO 2: 1 CEmOC with 10 SBAs, 5 BEmOCs with 2 SBAs each
-# BOTH SCENARIOS: complicated deliveries happen in CEmOC with probability 0.9 
-#			uncomplicated births equally likely to happen in any facility
-# ALTERNATIVE: All births happen in CEmOC with probability 0.5 (reflecting 
+# All births happen in CEmOC with probability 0.5 (reflecting 
 # preferences of women about to give birth), remaining births are equally likely
 # to happen in any BEmOC facility
 ################################################################################
@@ -242,7 +233,7 @@ facility2[complicated==0] <- sample(1:6, size=length(facility2[complicated==0]),
 
 
 #################################################################################################################################
-# OCCUPANCY AT SNAPSHOTS IN TIME (4:00, 12:00, 20:00)
+# OCCUPANCY AT SNAPSHOTS IN TIME (4:00, 12:00, 18:00)
 #################################################################################################################################
 
 # times to generate 'snapshots', 
@@ -330,7 +321,6 @@ p1 <- ggplot(df.total.snaps1.long, aes(x=Snapshot, y=NumBirths, fill=BirthType))
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + ylim(0, 45) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p1)
-#ggsave("WHO_S1_TotalBirthsMonthSingle.png", plot=p1, dpi=300, width=12, height=8)
 
 
 # SCENARIO 2
@@ -346,7 +336,6 @@ p2 <- ggplot(df.total.snaps2.long, aes(x=Snapshot, y=NumBirths, fill=BirthType))
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + ylim(0, 45) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), legend.text=element_text(size=16))
 print(p2)
-#ggsave("WHO_S2_TotalBirthsMonthSingle.png", plot=p2, dpi=300, width=12, height=8)
 
 
 # WOMEN IN FACILITIES - BY FACILITY
@@ -370,7 +359,6 @@ p3 <- ggplot(df.fac.snaps1.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) +
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + facet_wrap(~ Facility, ncol=3) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p3)
-#ggsave("WHO_S1_BirthsFacilityMonthSingle.png", plot=p3, dpi=300, width=18, height=9)
 
 
 # SCENARIO 2
@@ -393,7 +381,6 @@ p4 <- ggplot(df.fac.snaps2.long, aes(x=Snapshot, y=NumBirths, fill=BirthType)) +
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in EmOCs") + facet_wrap(~ Facility, ncol=3) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p4)
-#ggsave("WHO_S2_BirthsFacilityMonthSingle.png", plot=p4, dpi=300, width=18, height=12)
 
 
 # WOMEN IN DELIVERY ROOMS - BY FACILITY
@@ -417,7 +404,6 @@ p5 <- ggplot(df.del.fac.snaps1.long, aes(x=Snapshot, y=NumBirths, fill=BirthType
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in delivery rooms") + facet_wrap(~ Facility, ncol=3) +
 	theme(axis.title=element_text(size=18), axis.title.x=element_blank(), axis.text=element_text(size=16), axis.text.x=element_blank(), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p5)
-#ggsave("WHO_S1_DelFacilityMonthSingle.png", plot=p5, dpi=300, width=18, height=9)
 
 
 # SCENARIO 2
@@ -441,12 +427,12 @@ p6 <- ggplot(df.del.fac.snaps2.long, aes(x=Snapshot, y=NumBirths, fill=BirthType
 	ylim(0,5) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16), plot.margin=margin(2,0,0,0, "cm"))
 print(p6)
-#ggsave("WHO_S2_DelFacilityMonthSingle.png", plot=p6, dpi=300, width=18, height=12)
+
 
 pcol <- plot_grid(p5 + theme(legend.position="none"), p6 + theme(legend.position="none"), labels=c('a', 'b'), label_size=20, label_y=1.0, nrow=2, rel_heights=c(1, 2))
 legend <- get_legend(p1 + theme(legend.box.margin=margin(0, 0, 0, 12)))
 pic1 <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
-#save_plot(filename="Fig1_WHO_DelFacMonth_v3.pdf", plot=pic1, base_height=15, base_width=15, dpi=300)
+save_plot(filename="Fig1_WHO_DelFacMonth.pdf", plot=pic1, base_height=15, base_width=15, dpi=300)
 
 
 # WOMEN IN MATERNITY BEDS (POST-PARTUM) - BY FACILITY
@@ -470,7 +456,6 @@ p7 <- ggplot(df.mat.fac.snaps1.long, aes(x=Snapshot, y=NumBirths, fill=BirthType
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women\nin post-partum beds") + facet_wrap(~ Facility, ncol=3) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p7)
-#ggsave("WHO_S1_MatFacilityMonthSingle.png", plot=p7, dpi=300, width=18, height=9)
 
 
 # SCENARIO 2
@@ -493,14 +478,12 @@ p8 <- ggplot(df.mat.fac.snaps2.long, aes(x=Snapshot, y=NumBirths, fill=BirthType
 	xlab("Time - snapshots every 8h over a month") + ylab("Number of women in post-partum beds") + facet_wrap(~ Facility, ncol=3) +
 	theme(axis.title=element_text(size=18), axis.text=element_text(size=16), axis.text.x=element_text(angle=45, hjust=1, vjust=1), legend.text=element_text(size=16), strip.text=element_text(size=16))
 print(p8)
-#ggsave("WHO_S2_MatFacilityMonthSingle.png", plot=p8, dpi=300, width=18, height=12)
 
 
 pcol <- plot_grid(p7 + theme(legend.position="none"), p8 + theme(legend.position="none"), labels=c('a', 'b'), label_size=20, label_y=1.0, nrow=2, rel_heights=c(1, 2))
 legend <- get_legend(p1 + theme(legend.box.margin=margin(0, 0, 0, 12)))
-pic1 <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
-#save_plot(filename="Fig2_WHO_MatFacMonth_v3.png", plot=pic1, base_height=15, base_width=15, dpi=300)
-
+pic2 <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
+save_plot(filename="FigS4_WHO_MatFacMonth.pdf", plot=pic2, base_height=15, base_width=15, dpi=300)
 
 
 #################################################################################################################################
@@ -534,12 +517,11 @@ calcFacStats <- function(params, FT)
 	durPPCWHO <- rgamma(n=births,shape=shapePPCWHO,scale=scalePPCWHO)				# duration postpartum, complicated delivery
 
 	temp3 <- FT$latemail(births)			# each woman set a random date and time of presentation in labour at a health facility
-								# the vector orders them by date (for one year - 2014)
-	tz(temp3) <- timeZone				# set time zone, e.g. to East African Time 
+											# the vector orders them by date (for one year - 2014)
+	tz(temp3) <- timeZone					# set time zone, e.g. to East African Time 
 	labour_start <- temp3[sample(births)]	# labour_start dates and times in random order (means date/time of admission to labour ward)
 
 	complicated <- rbinom(births, 1, prob_comp)	# assign whether each woman has a complicated delivery: 1= complicated 0= uncomplicated
-                                              		# WHO general
 
 	# ALLOCATE FACILITIES
 	facility1 <- rep(0, births)		# facility allocation for Scenario 1
@@ -568,8 +550,8 @@ calcFacStats <- function(params, FT)
 	dur_labour <- rep(0,births)			
 	dur_labour[complicated==1] <- durDelComp[complicated==1]		# duration in labour ward dependant on whether delivery is complicated
 	dur_labour[complicated==0] <- durDelUncomp[complicated==0]		# or uncomplicated
-	dur_labour[dur_labour<min_labour] <- min_labour				# and must be minimum of min_labour
-	labour_end <- labour_start + dur_labour*60*60				# date and time that delivery ends (dur_labour in hours converted into seconds)
+	dur_labour[dur_labour<min_labour] <- min_labour					# and must be minimum of min_labour
+	labour_end <- labour_start + dur_labour*60*60					# date and time that delivery ends (dur_labour in hours converted into seconds)
 
 	# Duration in the maternity ward
 	dur_maternity <- rep(0,births)		
@@ -660,7 +642,6 @@ registerDoRNG(seed=seed)
 
 # call parallel for loop
 foreachResults <- foreach(i=1:n, .packages=c("lubridate")) %dorng% calcFacStats(params, FT)
-#res <- calcFacStats(params,FT)
 
 # end cluster
 stopImplicitCluster()
@@ -752,7 +733,6 @@ p9 <- ggplot(df.emptyLW1.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_classi
 	ylab("% Time delivery room is empty") + ylim(0, 100) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text=element_text(size=14), axis.text.x=element_text(angle=45, hjust=1, vjust=1))
 print(p9)
-#ggsave("WHO_S1_emptyLW100.png", plot=p9, dpi=300, width=9, height=5)
 
 
 df.emptyLW2.long <- gather(df.emptyLW2, Facility, PctTimeLWEmpty, count1:count6, factor_key=TRUE)
@@ -762,11 +742,10 @@ p10 <- ggplot(df.emptyLW2.long, aes(x=Facility, y=PctTimeLWEmpty)) + theme_class
 	ylab("% Time delivery room is empty") + ylim(0, 100) +
 	theme(axis.title.x=element_blank(), axis.title.y=element_text(size=14), axis.text=element_text(size=14), axis.text.x=element_text(angle=45, hjust=1, vjust=1))
 print(p10)
-#ggsave("WHO_S2_emptyLW100.png", plot=p10, dpi=300, width=9, height=5)
 
 
-pic2 <- plot_grid(p9, p10, labels=c('A', 'B'), label_size=20, nrow=1)
-#save_plot(filename="Fig2_WHO_emptyLW_CEmOCpref.png", plot=pic2, base_height=5, base_width=10, dpi=300)
+pic3 <- plot_grid(p9, p10, labels=c('a', 'b'), label_size=20, nrow=1)
+save_plot(filename="Fig2_WHO_emptyLW_ab.pdf", plot=pic3, base_height=5, base_width=10, dpi=300)
 
 
 # FIGURE 3
@@ -798,10 +777,10 @@ p13 <- ggplot(df.alt2, aes(x=Facility, y=BirthsPerSBA, colour=Type)) + theme_cla
 print(p13)
 
 
-pcol <- plot_grid(p12 + theme(legend.position="none"), p13 + theme(legend.position="none"), labels=c('A', 'B'), label_size=20, label_y=1.0, nrow=1, rel_heights=c(1, 2))
+pcol <- plot_grid(p12 + theme(legend.position="none"), p13 + theme(legend.position="none"), labels=c('a', 'b'), label_size=20, label_y=1.0, nrow=1, rel_heights=c(1, 2))
 legend <- get_legend(p12 + theme(legend.box.margin=margin(0, 0, 0, 12)))
-pic3 <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
-save_plot(filename="Fig3alt_WHO_birthsPerSBA_CEmOCpref.png", plot=pic3, base_height=5, base_width=12, dpi=300)
+pic4 <- plot_grid(pcol, legend, rel_widths=c(3, 0.8))
+save_plot(filename="FigS5_ab_WHO_birthsPerSBA.pdf", plot=pic4, base_height=5, base_width=12, dpi=300)
 
 
 df.LW1.long <- gather(df.LW1, Facility, Hours, count1:count3, factor_key=TRUE)
@@ -813,7 +792,6 @@ p13 <- ggplot(df.LW1.long, aes(x=Women, y=Hours, colour=Facility)) + theme_class
 	ylab("Number of hours") + xlab("Number of women in delivery room") + scale_colour_manual(values=c("red", "dodgerblue", "deepskyblue")) +
 	theme(axis.title=element_text(size=16), axis.text.y=element_text(size=16), axis.text.x=element_text(size=16, angle=45, hjust=1, vjust=1), legend.title=element_text(size=16), legend.text=element_text(size=16))
 print(p13)
-ggsave("WHO_S1_hoursWomen_CEmOCpref.png", plot=p13, dpi=300, width=12, height=9)
 
 
 df.LW2.long <- gather(df.LW2, Facility, Hours, count1:count6, factor_key=TRUE)
@@ -825,8 +803,6 @@ p14 <- ggplot(df.LW2.long, aes(x=Women, y=Hours, colour=Facility)) + theme_class
 	ylab("Number of hours") + xlab("Number of women in delivery room") + scale_colour_manual(values=c("red", "dodgerblue", "deepskyblue", "cadetblue", "blue", "navy")) +
 	theme(axis.title=element_text(size=16), axis.text.y=element_text(size=16), axis.text.x=element_text(size=16, angle=45, hjust=1, vjust=1), legend.title=element_text(size=16), legend.text=element_text(size=16))
 print(p14)
-ggsave("WHO_S2_hoursWomen_CEmOCpref.png", plot=p14, dpi=300, width=12, height=9)
-
 
 
 #################################################################################################################################
@@ -847,12 +823,12 @@ for(i in 1:n)
 	durPPUWHO <- rgamma(n=births,shape=shapePPUWHO,scale=scalePPUWHO)				# duration postpartum, uncomplicated delivery
 	durPPCWHO <- rgamma(n=births,shape=shapePPCWHO,scale=scalePPCWHO)				# duration postpartum, complicated delivery
 
-	temp3 <- latemail(births)			# each woman set a random date and time of presentation in labour at a health facility
-								# the vector orders them by date (for one year - 2014)
-	tz(temp3) <- timeZone				# set time zone, e.g. to East African Time 
+	temp3 <- latemail(births)				# each woman set a random date and time of presentation in labour at a health facility
+											# the vector orders them by date (for one year - 2014)
+	tz(temp3) <- timeZone					# set time zone, e.g. to East African Time 
 	labour_start <- temp3[sample(births)]	# labour_start dates and times in random order (means date/time of admission to labour ward)
 
-	complicated <- rbinom(births, 1, prob_comp)	# assign whether each woman has a complicated delivery: 1= complicated 0= uncomplicated
+	complicated <- rbinom(births, 1, prob_comp)		# assign whether each woman has a complicated delivery: 1= complicated 0= uncomplicated
                                               		# WHO general
 	pct.comp <- sum(complicated) / length(complicated)
 	
